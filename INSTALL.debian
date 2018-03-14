@@ -43,7 +43,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Create user account
-useradd -m danbooru
+useradd -m danbooru -u 1026
 chsh -s /bin/bash danbooru
 usermod -G danbooru,sudo danbooru
 
