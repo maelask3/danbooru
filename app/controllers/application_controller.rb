@@ -9,9 +9,9 @@ class ApplicationController < ActionController::Base
   before_action :set_started_at_session
   before_action :api_check
   before_action :set_safe_mode
+  before_action :set_variant
   # before_action :secure_cookies_check
   layout "default"
-  force_ssl :if => :ssl_login?
   helper_method :show_moderation_notice?
   before_action :enable_cors
 
@@ -30,10 +30,6 @@ class ApplicationController < ActionController::Base
 
   def show_moderation_notice?
     CurrentUser.can_approve_posts? && (cookies[:moderated].blank? || Time.at(cookies[:moderated].to_i) < 20.hours.ago)
-  end
-
-  def ssl_login?
-    cookies[:ssl_login].present?
   end
 
   def enable_cors
@@ -114,13 +110,13 @@ class ApplicationController < ActionController::Base
     elsif exception.is_a?(NotImplementedError)
       flash[:notice] = "This feature isn't available: #{@exception.message}"
       respond_to do |fmt|
-        fmt.html { redirect_to :back }
+        fmt.html { redirect_back fallback_location: root_path }
         fmt.js { render nothing: true, status: 501 }
         fmt.json { render template: "static/error", status: 501 }
         fmt.xml  { render template: "static/error", status: 501 }
       end
     else
-      render :template => "static/error", :status => 500
+      render :template => "static/error", :status => 500, :layout => "blank"
     end
   end
 
@@ -132,7 +128,7 @@ class ApplicationController < ActionController::Base
   def authentication_failed
     respond_to do |fmt|
       fmt.html do
-        render :text => "authentication failed", :status => 401
+        render :plain => "authentication failed", :status => 401
       end
 
       fmt.xml do
@@ -187,6 +183,10 @@ class ApplicationController < ActionController::Base
     if session[:started_at].blank?
       session[:started_at] = Time.now
     end
+  end
+
+  def set_variant
+    request.variant = params[:variant].try(:to_sym)
   end
 
   User::Roles.each do |role|

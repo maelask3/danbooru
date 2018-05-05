@@ -58,6 +58,7 @@ class User < ApplicationRecord
     disable_mobile_gestures
     enable_safe_mode
     disable_responsive_mode
+    disable_post_tooltips
   )
 
   include Danbooru::HasBitFlags
@@ -103,6 +104,7 @@ class User < ApplicationRecord
   has_many :saved_searches
   has_many :forum_posts, lambda {order("forum_posts.created_at, forum_posts.id")}, :foreign_key => "creator_id"
   has_many :user_name_change_requests, lambda {visible.order("user_name_change_requests.created_at desc")}
+  has_many :favorite_groups, lambda {order(name: :asc)}, foreign_key: :creator_id
   belongs_to :inviter, class_name: "User", optional: true
   after_update :create_mod_action
   accepts_nested_attributes_for :dmail_filter
@@ -191,7 +193,7 @@ class User < ApplicationRecord
     def update_remote_cache
       if saved_change_to_name?
         Danbooru.config.other_server_hosts.each do |server|
-          HTTParty.delete("http://#{server}/users/#{id}/cache", Danbooru.config.httparty_options)
+          delay(queue: server).update_cache
         end
       end
     rescue Exception
@@ -303,10 +305,6 @@ class User < ApplicationRecord
 
     def remove_favorite!(post)
       Favorite.remove(post: post, user: self)
-    end
-
-    def favorite_groups
-      FavoriteGroup.for_creator(CurrentUser.user.id).order("updated_at desc")
     end
   end
 
@@ -752,7 +750,7 @@ class User < ApplicationRecord
     end
 
     def favorite_group_count
-      FavoriteGroup.for_creator(id).count
+      favorite_groups.count
     end
 
     def appeal_count
@@ -928,7 +926,7 @@ class User < ApplicationRecord
 
   def dmail_count
     if has_mail?
-      "(#{dmails.unread.count})"
+      "(#{unread_dmail_count})"
     else
       ""
     end

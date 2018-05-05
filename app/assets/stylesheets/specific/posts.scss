@@ -179,21 +179,6 @@ body[data-user-can-approve-posts="true"] .post-preview {
   }
 }
 
-<% TagCategory.css_mapping.each do |category,cssmap| %>
-  .category-<%= category %> a, a.tag-type-<%= category %>, .ui-state-focus a.tag-type-<%= category %> {
-    color: <%= cssmap["color"] %>;
-
-    &:hover {
-      color: <%= cssmap["hover"] %>;
-    }
-  }
-<% end %>
-
-.category-banned a, a.tag-type-banned,, .ui-state-focus a.tag-type-banned {
-  color: black;
-  background-color: red;
-}
-
 .post-count {
   color: #CCC;
   margin-left: 0.2em;

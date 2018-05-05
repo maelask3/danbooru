@@ -1,0 +1,85 @@
+$tooltip-max-width: 164px * 4 - 10; // 4 thumbnails wide.
+$tooltip-min-width: 164px * 2 - 10; // 2 thumbnails wide.
+$tooltip-height: 112px;
+
+@mixin thin-scrollbar {
+  &::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  &::-webkit-scrollbar-button {
+    width: 0px;
+    height: 0px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #999999;
+    border: 0px none #FFFFFF;
+    border-radius: 0px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #AAAAAA;
+  }
+
+  &::-webkit-scrollbar-thumb:active {
+    background: #AAAAAA;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #EEEEEE;
+    border: 0px none #ffffff;
+    border-radius: 0px;
+  }
+
+  &::-webkit-scrollbar-track:hover {
+    background: #EEEEEE;
+  }
+
+  &::-webkit-scrollbar-track:active {
+    background: #EEEEEE;
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+
+.post-tooltip {
+  max-width: $tooltip-max-width;
+  min-width: $tooltip-min-width;
+  box-sizing: border-box;
+  line-height: 16px;
+  border-color: #767676;
+
+  .qtip-content {
+    padding: 4px 6px;
+
+    .post-tooltip-body {
+      @include thin-scrollbar;
+      max-height: $tooltip-height;
+      overflow-y: auto;
+
+      li {
+        margin-right: 0;
+      }
+    }
+
+    .post-tooltip-footer {
+      .post-tooltip-disable {
+        float: right;
+        margin-top: 2px;
+      }
+    }
+  }
+
+  &:not(:hover) a {
+    color: #666666;
+  }
+
+  &.post-tooltip-loading {
+    visibility: hidden;
+  }
+}

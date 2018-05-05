@@ -8,7 +8,7 @@
     }
 
     if ($("#c-uploads").length) {
-      $("#image").load(this.initialize_image);
+      $("#image").on("load", this.initialize_image);
       this.initialize_info_bookmarklet();
       this.initialize_similar();
       this.initialize_shortcuts();
@@ -101,14 +101,11 @@
   }
 
   Danbooru.Upload.fetch_source_data = function(url, referer_url) {
-    var xhr = $.getJSON("/source.json", { url: url, ref: referer_url });
-
-    xhr.success(Danbooru.Upload.fill_source_info);
-    xhr.fail(function(data) {
-      $("#source-info span#loading-data").html("Error: " + data.responseJSON["message"])
-    });
-
-    return xhr;
+    return $.getJSON("/source.json", { url: url, ref: referer_url })
+      .then(Danbooru.Upload.fill_source_info)
+      .catch(function(data) {
+        $("#source-info span#loading-data").html("Error: " + data.responseJSON["message"])
+      });
   }
 
   Danbooru.Upload.fill_source_info = function(data) {
@@ -128,7 +125,7 @@
         artist: {
           name: data.unique_id,
           other_names: data.artist_name,
-          url_string: $.unique([data.profile_url, data.normalized_for_artist_finder_url]).join("\n")
+          url_string: $.uniqueSort([data.profile_url, data.normalized_for_artist_finder_url]).join("\n")
         }
       });
 
