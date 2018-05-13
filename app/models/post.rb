@@ -52,8 +52,8 @@ class Post < ApplicationRecord
   has_many :appeals, :class_name => "PostAppeal", :dependent => :destroy
   has_many :votes, :class_name => "PostVote", :dependent => :destroy
   has_many :notes, :dependent => :destroy
-  has_many :comments, lambda {includes(:creator, :updater).order("comments.id")}, :dependent => :destroy
-  has_many :children, lambda {order("posts.id")}, :class_name => "Post", :foreign_key => "parent_id"
+  has_many :comments, -> {includes(:creator, :updater).order("comments.id")}, :dependent => :destroy
+  has_many :children, -> {order("posts.id")}, :class_name => "Post", :foreign_key => "parent_id"
   has_many :approvals, :class_name => "PostApproval", :dependent => :destroy
   has_many :disapprovals, :class_name => "PostDisapproval", :dependent => :destroy
   has_many :favorites
@@ -85,7 +85,7 @@ class Post < ApplicationRecord
   end
 
   if PostArchive.enabled?
-    has_many :versions, lambda {order("post_versions.updated_at ASC")}, :class_name => "PostArchive", :dependent => :destroy
+    has_many :versions, -> {order("post_versions.updated_at ASC")}, :class_name => "PostArchive", :dependent => :destroy
   end
 
   module FileMethods
@@ -509,6 +509,15 @@ class Post < ApplicationRecord
         source
       end
     end
+
+    def source_domain
+      return "" unless source =~ %r!\Ahttps?://!i
+
+      url = Addressable::URI.parse(normalized_source)
+      url.domain
+    rescue
+      ""
+    end
   end
 
   module TagMethods
@@ -555,10 +564,10 @@ class Post < ApplicationRecord
 
       if PostKeeperManager.enabled? && persisted?
         # no need to do this check on the initial create
-        PostKeeperManager.check_and_update(self, CurrentUser.id, increment_tags)
+        PostKeeperManager.check_and_assign(self, CurrentUser.id, increment_tags)
 
         # run this again async to check for race conditions
-        PostKeeperManager.queue_check(self, CurrentUser.id)
+        PostKeeperManager.queue_check(id, CurrentUser.id)
       end
     end
 
@@ -1820,28 +1829,20 @@ class Post < ApplicationRecord
   end
 
   def mark_as_translated(params)
-    tags = self.tag_array.dup
+    add_tag("check_translation") if params["check_translation"].to_s.truthy?
+    remove_tag("check_translation") if params["check_translation"].to_s.falsy?
 
-    if params["check_translation"] == "1"
-      tags << "check_translation"
-    elsif params["check_translation"] == "0"
-      tags -= ["check_translation"]
-    end
-    if params["partially_translated"] == "1"
-      tags << "partially_translated"
-    elsif params["partially_translated"] == "0"
-      tags -= ["partially_translated"]
-    end
+    add_tag("partially_translated") if params["partially_translated"].to_s.truthy?
+    remove_tag("partially_translated") if params["partially_translated"].to_s.falsy?
 
-    if params["check_translation"] == "1" || params["partially_translated"] == "1"
-      tags << "translation_request"
-      tags -= ["translated"]
+    if has_tag?("check_translation") || has_tag?("partially_translated")
+      add_tag("translation_request")
+      remove_tag("translated")
     else
-      tags << "translated"
-      tags -= ["translation_request"]
+      add_tag("translated")
+      remove_tag("translation_request")
     end
 
-    self.tag_string = tags.join(" ")
     save
   end
 

@@ -2,6 +2,16 @@ require 'test_helper'
 
 module Downloads
   class PixivTest < ActiveSupport::TestCase
+    def setup
+      super
+      load_pixiv_tokens!
+    end
+
+    def teardown
+      save_pixiv_tokens!
+      super
+    end
+
     context "An ugoira site for pixiv" do
       setup do
         @download = Downloads::File.new("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247364")
@@ -164,6 +174,16 @@ module Downloads
         should "download new novel images" do
           @file_url = "http://i1.pixiv.net/novel-cover-original/img/2016/11/03/20/10/58/7436075_f75af69f3eacd1656d3733c72aa959cf.jpg"
           @file_size = 316_311
+
+          assert_not_rewritten(@file_url)
+          assert_downloaded(@file_size, @file_url)
+        end
+      end
+
+      context "downloading a pixiv fanbox image" do
+        should "work" do
+          @file_url = "https://fanbox.pixiv.net/images/post/31757/w/1200/0CdXtgr4al3t43gQG4NZLnpQ.jpeg"
+          @file_size = 200_239
 
           assert_not_rewritten(@file_url)
           assert_downloaded(@file_size, @file_url)

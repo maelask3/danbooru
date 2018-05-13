@@ -8,7 +8,7 @@ class BulkUpdateRequest < ApplicationRecord
 
   validates_presence_of :user
   validates_presence_of :script
-  validates_presence_of :title, :if => lambda {|rec| rec.forum_topic_id.blank?}
+  validates_presence_of :title, if: ->(rec) {rec.forum_topic_id.blank?}
   validates_inclusion_of :status, :in => %w(pending approved rejected)
   validate :script_formatted_correctly
   validate :forum_topic_id_not_invalid
@@ -17,10 +17,10 @@ class BulkUpdateRequest < ApplicationRecord
   before_validation :normalize_text
   after_create :create_forum_topic
 
-  scope :pending_first, lambda { order("(case status when 'pending' then 0 when 'approved' then 1 else 2 end)") }
-  scope :pending, ->{where(status: "pending")}
-  scope :expired, ->{where("created_at < ?", TagRelationship::EXPIRY.days.ago)}
-  scope :old, ->{where("created_at between ? and ?", TagRelationship::EXPIRY.days.ago, TagRelationship::EXPIRY_WARNING.days.ago)}
+  scope :pending_first, -> { order(Arel.sql("(case status when 'pending' then 0 when 'approved' then 1 else 2 end)")) }
+  scope :pending, -> {where(status: "pending")}
+  scope :expired, -> {where("created_at < ?", TagRelationship::EXPIRY.days.ago)}
+  scope :old, -> {where("created_at between ? and ?", TagRelationship::EXPIRY.days.ago, TagRelationship::EXPIRY_WARNING.days.ago)}
 
   module SearchMethods
     def default_order
@@ -205,10 +205,6 @@ class BulkUpdateRequest < ApplicationRecord
   end
 
   def skip_secondary_validations=(v)
-    if v == "1" or v == true
-      @skip_secondary_validations = true
-    else
-      @skip_secondary_validations = false
-    end
+    @skip_secondary_validations = v.to_s.truthy?
   end
 end

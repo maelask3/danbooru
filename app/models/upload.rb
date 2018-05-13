@@ -165,25 +165,11 @@ class Upload < ApplicationRecord
     end
 
     def process!(force = false)
-      @tries ||= 0
-      return if !force && status =~ /processing|completed|error/
-
       process_upload
       post = create_post_from_upload
-
-    rescue Timeout::Error, Net::HTTP::Persistent::Error => x
-      if @tries > 3
-        update_attributes(:status => "error: #{x.class} - #{x.message}", :backtrace => x.backtrace.join("\n"))
-      else
-        @tries += 1
-        retry
-      end
-      nil
-
     rescue Exception => x
       update_attributes(:status => "error: #{x.class} - #{x.message}", :backtrace => x.backtrace.join("\n"))
       nil
-
     ensure
       file.try(:close!)
     end
@@ -426,9 +412,9 @@ class Upload < ApplicationRecord
         q = q.attribute_matches(:post_id, params[:post_id])
       end
 
-      if params[:has_post] == "yes"
+      if params[:has_post].to_s.truthy?
         q = q.where.not(post_id: nil)
-      elsif params[:has_post] == "no"
+      elsif params[:has_post].to_s.falsy?
         q = q.where(post_id: nil)
       end
 
@@ -490,10 +476,10 @@ class Upload < ApplicationRecord
   end
 
   def upload_as_pending?
-    as_pending == "1"
+    as_pending.to_s.truthy?
   end
 
   def include_artist_commentary?
-    include_artist_commentary == "1"
+    include_artist_commentary.to_s.truthy?
   end
 end

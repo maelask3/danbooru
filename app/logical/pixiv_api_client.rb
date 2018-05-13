@@ -1,3 +1,5 @@
+require 'resolv-replace'
+
 class PixivApiClient
   API_VERSION = "1"
   CLIENT_ID = "bYGKuGVw91e0NMfPGp44euvGt59s"
@@ -152,6 +154,10 @@ class PixivApiClient
     else
       raise Error.new("Pixiv API call failed (status=#{resp.code} body=#{body})")
     end
+  rescue Net::OpenTimeout
+    print "R"
+    sleep(5)
+    retry
   rescue JSON::ParserError
     raise Error.new("Pixiv API call failed (status=#{resp.code} body=#{body})")
   end
@@ -183,5 +189,10 @@ class PixivApiClient
 
       access_token
     end
+
+  rescue Net::OpenTimeout
+    print "R"
+    sleep(5)
+    retry
   end
 end
