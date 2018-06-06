@@ -118,8 +118,6 @@ class BulkUpdateRequest < ApplicationRecord
         update(forum_post_id: forum_post.id)
       else
         forum_topic = ForumTopic.create(title: title, category_id: 1, original_post_attributes: {body: reason_with_link})
-        puts forum_topic.errors.full_messages
-        puts forum_topic.original_post.errors.full_messages
         update(forum_topic_id: forum_topic.id, forum_post_id: forum_topic.posts.first.id)
       end
     end
@@ -206,5 +204,17 @@ class BulkUpdateRequest < ApplicationRecord
 
   def skip_secondary_validations=(v)
     @skip_secondary_validations = v.to_s.truthy?
+  end
+
+  def is_pending?
+    status == "pending"
+  end
+
+  def is_approved?
+    status == "approved"
+  end
+
+  def is_rejected?
+    status == "rejected"
   end
 end

@@ -180,8 +180,11 @@ class Artist < ApplicationRecord
 
     def save_urls
       if url_string && saved_change_to_url_string?
-        self.urls = url_string.scan(/[^[:space:]]+/).uniq.map do |url|
-          self.urls.find_or_create_by(url: url)
+        Artist.transaction do
+          self.urls.clear
+          self.urls = url_string.scan(/[^[:space:]]+/).uniq.map do |url|
+            self.urls.find_or_create_by(url: url)
+          end
         end
       end
     end
@@ -484,6 +487,9 @@ class Artist < ApplicationRecord
       else
         nil
       end
+    rescue Net::OpenTimeout, PixivApiClient::Error
+      raise if Rails.env.test?
+      nil
     rescue Exception
       nil
     end

@@ -74,7 +74,6 @@ Rails.application.routes.draw do
       put :revert
       put :ban
       put :unban
-      post :undelete
     end
     collection do
       get :show_or_new
@@ -82,6 +81,7 @@ Rails.application.routes.draw do
       get :finder
     end
   end
+  resources :artist_urls, only: [:update]
   resources :artist_versions, :only => [:index] do
     collection do
       get :search
