@@ -57,6 +57,7 @@ Rails.application.routes.draw do
   end
   namespace :maintenance do
     namespace :user do
+      resource :count_fixes, only: [:new, :create]
       resource :email_notification, :only => [:show, :destroy]
       resource :password_reset, :only => [:new, :create, :edit, :update]
       resource :login_reminder, :only => [:new, :create]
@@ -154,8 +155,10 @@ Rails.application.routes.draw do
     resource :visit, :controller => "forum_topic_visits"
   end
   resources :ip_bans
-  resource :iqdb_queries, :only => [:create, :show, :check] do
-    get :check
+  resource :iqdb_queries, :only => [:show]  do
+    collection do
+      get :check, to: redirect {|path_params, req| "/iqdb_queries?#{req.query_string}"}
+    end
   end
   resources :janitor_trials do
     collection do

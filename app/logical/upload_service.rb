@@ -4,16 +4,18 @@ class UploadService
       upload = Upload.new
 
       if url
-        # this gets called from UploadsController#new so we need
-        # to preprocess async
-        Preprocessor.new(source: url).delay(queue: "default").start!(CurrentUser.user.id)
-
         download = Downloads::File.new(url)
         normalized_url, _, _ = download.before_download(url, {})
         post = if normalized_url.nil?
           Post.where("SourcePattern(lower(posts.source)) = ?", url).first
         else
           Post.where("SourcePattern(lower(posts.source)) IN (?)", [url, normalized_url]).first
+        end
+
+        if post.nil?
+          # this gets called from UploadsController#new so we need
+          # to preprocess async
+          Preprocessor.new(source: url).delay(queue: "default").start!(CurrentUser.user.id)
         end
 
         begin
@@ -62,9 +64,21 @@ class UploadService
       end
     end
 
-    def self.delete_file(md5, file_ext)
+    def self.delete_file(md5, file_ext, upload_id = nil)
       if Post.where(md5: md5).exists?
+        if upload_id
+          CurrentUser.as_system do
+            Upload.find(upload_id).update(status: "completed")
+          end
+        end
+
         return
+      end
+
+      if upload_id
+        CurrentUser.as_system do
+          Upload.find(upload_id).update(status: "preprocessed + deleted")
+        end
       end
 
       Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :original)
@@ -100,13 +114,17 @@ class UploadService
     end
 
     def self.distribute_files(file, record, type)
+      # need to do this for hybrid storage manager
+      post = Post.new
+      post.md5 = record.md5
+      post.file_ext = record.file_ext
       [Danbooru.config.storage_manager, Danbooru.config.backup_storage_manager].each do |sm|
-        sm.store_file(file, record, type)
+        sm.store_file(file, post, type)
       end
     end
 
     def self.is_downloadable?(source)
-      source.match?(/^https?:\/\//)
+      source =~ /^https?:\/\//
     end
 
     def self.generate_resizes(file, upload)
@@ -174,7 +192,7 @@ class UploadService
       # in case this upload never finishes processing, we need to delete the
       # distributed files in the future
       Danbooru.config.other_server_hosts.each do |host|
-        UploadService::Utils.delay(queue: host, run_at: 10.minutes.from_now).delete_file(upload.md5, upload.file_ext)
+        UploadService::Utils.delay(queue: host, run_at: 30.minutes.from_now).delete_file(upload.md5, upload.file_ext, upload.id)
       end
     end
 
@@ -264,7 +282,7 @@ class UploadService
     end
 
     def in_progress?
-      if source.present?
+      if Utils.is_downloadable?(source)
         Upload.where(status: "preprocessing", source: source).exists?
       elsif md5.present?
         Upload.where(status: "preprocessing", md5: md5).exists?
@@ -274,7 +292,7 @@ class UploadService
     end
 
     def predecessor
-      if source.present?
+      if Utils.is_downloadable?(source)
         Upload.where(status: ["preprocessed", "preprocessing"], source: source).first
       elsif md5.present?
         Upload.where(status: ["preprocessed", "preprocessing"], md5: md5).first
@@ -286,13 +304,11 @@ class UploadService
     end
 
     def start!(uploader_id)
-      if source.present?
-        if !Utils.is_downloadable?(source)
-          return
-        end
-
-        if Post.where(source: source).exists?
-          return
+      if Utils.is_downloadable?(source)
+        CurrentUser.as_system do
+          if Post.tag_match("source:#{source}").exists?
+            return
+          end
         end
 
         if Upload.where(source: source, status: "completed").exists?
@@ -308,11 +324,10 @@ class UploadService
       params[:tag_string] ||= "tagme"
 
       CurrentUser.as(User.find(uploader_id)) do
-        upload = Upload.create!(params)
-
-        upload.update(status: "preprocessing")
-
         begin
+          upload = Upload.create!(params)
+          upload.update(status: "preprocessing")
+
           if source.present?
             file = Utils.download_for_upload(source, upload)
           elsif params[:file].present?
@@ -335,6 +350,10 @@ class UploadService
 
     def finish!(upload = nil)
       pred = upload || self.predecessor()
+
+      # regardless of who initialized the upload, credit should goto whoever submitted the form
+      pred.initialize_attributes
+
       pred.attributes = self.params
       pred.status = "completed"
       pred.save
@@ -512,7 +531,7 @@ class UploadService
 
       @upload.update(status: "processing")
 
-      if @upload.file.nil? && source.present?
+      if @upload.file.nil? && Utils.is_downloadable?(source)
         @upload.file = Utils.download_for_upload(source, @upload)
       end
 

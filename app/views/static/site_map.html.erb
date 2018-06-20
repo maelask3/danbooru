@@ -16,6 +16,7 @@
         <% if CurrentUser.is_moderator? %>
           <li><%= link_to("Mass Edit", edit_moderator_tag_path) %></li>
         <% end %>
+        <li><%= link_to("Similar Images Search", iqdb_queries_path) %></li>
       </ul>
       <ul>
         <li><h1>Post Events</h1></li>
@@ -33,7 +34,6 @@
         <li><%= link_to("Bookmarklet", bookmarklet_path) %></li>
         <li><%= link_to("User Scripts", wiki_pages_path(title: "about:userscripts")) %></li>
         <li><%= link_to("API Documentation", wiki_pages_path(:title => "help:api")) %></li>
-        <li><%= link_to("IQDB Queries", check_iqdb_queries_path) %></li>
       </ul>
       <ul>
         <li><h1>Artists</h1></li>
@@ -119,6 +119,7 @@
         <li><%= link_to("Signup", new_user_path) %></li>
         <li><%= link_to("Terms of Service", terms_of_service_path) %></li>
         <li><%= link_to("Upgrade Information", new_user_upgrade_path) %></li>
+        <li><%= link_to("Refresh counts", new_maintenance_user_count_fixes) %>
       </ul>
       <ul>
         <li><h1>Admin</h1></li>

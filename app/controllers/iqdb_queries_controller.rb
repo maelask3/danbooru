@@ -1,29 +1,29 @@
-# todo: move this to iqdbs
 class IqdbQueriesController < ApplicationController
-  respond_to :html, :json, :xml
+  respond_to :html, :json
 
   def show
-    @results = find_similar
-
-    respond_with(@results) do |fmt|
-      fmt.html { render :layout => false, :action => "create_by_url" }
-      fmt.js { render :layout => false, :action => "create_by_post" }
+    if params[:url]
+      url = URI.parse(Danbooru.config.iqdbs_server)
+      url.path = "/similar"
+      url.query = {callback: iqdb_queries_url(format: params[:format]), url: params[:url]}.to_query
+      redirect_to url.to_s
+      return
     end
-  end
 
-  def check
-    @results = find_similar
-    respond_with(@results)
-  end
+    if params[:post_id]
+      post = Post.find(params[:post_id])
+      url = URI.parse(Danbooru.config.iqdbs_server)
+      url.path = "/similar"
+      url.query = {callback: iqdb_queries_url(format: params[:format]), url: post.preview_file_url}.to_query
+      redirect_to url.to_s
+      return      
+    end
 
-  # Support both POST /iqdb_queries and GET /iqdb_queries.
-  alias_method :create, :show
+    if params[:matches]
+      @matches = JSON.parse(params[:matches])
+      @matches = @matches.map {|x| [Post.find(x[0]), x[1]]}
+    end
 
-protected
-  def find_similar
-    return [] if params[:url].blank? && params[:post_id].blank?
-
-    params[:url] = Post.find(params[:post_id]).preview_file_url if params[:post_id].present?
-    Iqdb::Download.find_similar(params[:url])
+    respond_with(@matches)
   end
 end

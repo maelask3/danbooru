@@ -52,7 +52,7 @@ class Upload < ApplicationRecord
   belongs_to :uploader, :class_name => "User"
   belongs_to :post, optional: true
 
-  before_validation :initialize_attributes
+  before_validation :initialize_attributes, on: :create
   before_validation :assign_rating_from_tags
   validate :uploader_is_not_limited, on: :create
   # validates :source, format: { with: /\Ahttps?/ }, if: ->(record) {record.file.blank?}, on: :create
@@ -63,7 +63,6 @@ class Upload < ApplicationRecord
   validates :file_ext, format: { with: /jpg|gif|png|swf|webm|mp4|zip/ }, allow_nil: true
   validates_with Validator
   serialize :context, JSON
-  after_create {|rec| rec.uploader.increment!(:post_upload_count)}
 
   def initialize_attributes
     self.uploader_id = CurrentUser.user.id
