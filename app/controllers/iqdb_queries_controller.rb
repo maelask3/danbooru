@@ -1,29 +1,36 @@
 class IqdbQueriesController < ApplicationController
   respond_to :html, :json
+  before_action :detect_xhr
 
   def show
     if params[:url]
-      url = URI.parse(Danbooru.config.iqdbs_server)
-      url.path = "/similar"
-      url.query = {callback: iqdb_queries_url(format: params[:format]), url: params[:url]}.to_query
-      redirect_to url.to_s
-      return
+      @matches = IqdbProxy.query(params[:url])
     end
 
     if params[:post_id]
-      post = Post.find(params[:post_id])
-      url = URI.parse(Danbooru.config.iqdbs_server)
-      url.path = "/similar"
-      url.query = {callback: iqdb_queries_url(format: params[:format]), url: post.preview_file_url}.to_query
-      redirect_to url.to_s
-      return      
+      @matches = IqdbProxy.query(Post.find(params[:post_id]).preview_file_url)
     end
 
     if params[:matches]
-      @matches = JSON.parse(params[:matches])
-      @matches = @matches.map {|x| [Post.find(x[0]), x[1]]}
+      @matches = IqdbProxy.decorate_posts(JSON.parse(params[:matches]))
     end
 
-    respond_with(@matches)
+    respond_with(@matches) do |fmt|
+      fmt.html do |html|
+        html.xhr { render layout: false}
+      end
+      
+      fmt.json do
+        render json: @matches
+      end
+    end
+  end
+
+private
+  
+  def detect_xhr
+    if request.xhr?
+      request.variant = :xhr
+    end
   end
 end

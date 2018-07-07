@@ -3,7 +3,7 @@ class UploadService
     def self.prepare(url: nil, file: nil, ref: nil)
       upload = Upload.new
 
-      if url
+      if Utils.is_downloadable?(url) && file.nil?
         download = Downloads::File.new(url)
         normalized_url, _, _ = download.before_download(url, {})
         post = if normalized_url.nil?
@@ -15,7 +15,7 @@ class UploadService
         if post.nil?
           # this gets called from UploadsController#new so we need
           # to preprocess async
-          Preprocessor.new(source: url).delay(queue: "default").start!(CurrentUser.user.id)
+          Preprocessor.new(source: url).delay(priority: -1, queue: "default").delayed_start(CurrentUser.id)
         end
 
         begin
@@ -27,7 +27,7 @@ class UploadService
         return [upload, post, source, normalized_url, remote_size]
       elsif file
         # this gets called via XHR so we can process sync
-        Preprocessor.new(file: file).start!((CurrentUser.user.id))
+        Preprocessor.new(file: file).delayed_start(CurrentUser.id)
       end
 
       return [upload]
@@ -130,21 +130,31 @@ class UploadService
     def self.generate_resizes(file, upload)
       if upload.is_video?
         video = FFMPEG::Movie.new(file.path)
+        crop_file = generate_video_crop_for(video, Danbooru.config.small_image_width)
         preview_file = generate_video_preview_for(video, Danbooru.config.small_image_width, Danbooru.config.small_image_width)
 
       elsif upload.is_ugoira?
         preview_file = PixivUgoiraConverter.generate_preview(file)
+        crop_file = PixivUgoiraConverter.generate_crop(file)
         sample_file = PixivUgoiraConverter.generate_webm(file, upload.context["ugoira"]["frame_data"])
 
       elsif upload.is_image?
         preview_file = DanbooruImageResizer.resize(file, Danbooru.config.small_image_width, Danbooru.config.small_image_width, 85)
-
+        crop_file = DanbooruImageResizer.crop(file, Danbooru.config.small_image_width, Danbooru.config.small_image_width, 85)
         if upload.image_width > Danbooru.config.large_image_width
           sample_file = DanbooruImageResizer.resize(file, Danbooru.config.large_image_width, upload.image_height, 90)
         end
       end
 
-      [preview_file, sample_file]
+      [preview_file, crop_file, sample_file]
+    end
+
+    def self.generate_video_crop_for(video, width)
+      vp = Tempfile.new(["video-preview", ".jpg"], binmode: true)
+      video.screenshot(vp.path, {:seek_time => 0, :resolution => "#{video.width}x#{video.height}"})
+      crop = DanbooruImageResizer.crop(vp, width, width, 85)
+      vp.close
+      return crop
     end
 
     def self.generate_video_preview_for(video, width, height)
@@ -155,7 +165,7 @@ class UploadService
         width = (height * dimension_ratio).to_i
       end
 
-      output_file = Tempfile.new(binmode: true)
+      output_file = Tempfile.new(["video-preview", ".jpg"], binmode: true)
       video.screenshot(output_file.path, {:seek_time => 0, :resolution => "#{width}x#{height}"})
       output_file
     end
@@ -166,11 +176,6 @@ class UploadService
       upload.file_size = file.size
       upload.md5 = Digest::MD5.file(file.path).hexdigest
 
-      if Post.where(md5: upload.md5).exists?
-        # abort early if this post already exists
-        raise Upload::Error.new("Post with MD5 #{upload.md5} already exists")
-      end
-
       Utils.calculate_dimensions(upload, file) do |width, height|
         upload.image_width = width
         upload.image_height = height
@@ -178,21 +183,23 @@ class UploadService
 
       upload.tag_string = "#{upload.tag_string} #{Utils.automatic_tags(upload, file)}"
 
-      preview_file, sample_file = Utils.generate_resizes(file, upload)
+      preview_file, crop_file, sample_file = Utils.generate_resizes(file, upload)
 
       begin
         Utils.distribute_files(file, upload, :original)
         Utils.distribute_files(sample_file, upload, :large) if sample_file.present?
         Utils.distribute_files(preview_file, upload, :preview) if preview_file.present?
+        Utils.distribute_files(crop_file, upload, :crop) if crop_file.present?
       ensure
         preview_file.try(:close!)
+        crop_file.try(:close!)
         sample_file.try(:close!)
       end
 
       # in case this upload never finishes processing, we need to delete the
       # distributed files in the future
       Danbooru.config.other_server_hosts.each do |host|
-        UploadService::Utils.delay(queue: host, run_at: 30.minutes.from_now).delete_file(upload.md5, upload.file_ext, upload.id)
+        UploadService::Utils.delay(priority: -1, queue: host, run_at: 30.minutes.from_now).delete_file(upload.md5, upload.file_ext, upload.id)
       end
     end
 
@@ -267,9 +274,10 @@ class UploadService
   end
 
   class Preprocessor
-    attr_reader :params
+    attr_reader :params, :original_post_id
 
     def initialize(params)
+      @original_post_id = params.delete(:original_post_id) || -1
       @params = params
     end
 
@@ -303,49 +311,56 @@ class UploadService
       predecessor.present?
     end
 
-    def start!(uploader_id)
+    def delayed_start(uploader_id)
+      CurrentUser.as(uploader_id) do
+        start!
+      end
+
+    rescue ActiveRecord::RecordNotUnique
+      return
+    end
+
+    def start!
       if Utils.is_downloadable?(source)
         CurrentUser.as_system do
-          if Post.tag_match("source:#{source}").exists?
-            return
+          if Post.tag_match("source:#{source}").where.not(id: original_post_id).exists?
+            raise ActiveRecord::RecordNotUnique.new("A post with source #{source} already exists")
           end
         end
 
         if Upload.where(source: source, status: "completed").exists?
-          return
+          raise ActiveRecord::RecordNotUnique.new("A completed upload with source #{source} already exists")
         end
 
         if Upload.where(source: source).where("status like ?", "error%").exists?
-          return
+          raise ActiveRecord::RecordNotUnique.new("An errored upload with source #{source} already exists")
         end
       end
 
       params[:rating] ||= "q"
       params[:tag_string] ||= "tagme"
 
-      CurrentUser.as(User.find(uploader_id)) do
-        begin
-          upload = Upload.create!(params)
-          upload.update(status: "preprocessing")
+      upload = Upload.create!(params)
+      begin
+        upload.update(status: "preprocessing")
 
-          if source.present?
-            file = Utils.download_for_upload(source, upload)
-          elsif params[:file].present?
-            file = params[:file]
-          end
-
-          Utils.process_file(upload, file)
-
-          upload.rating = params[:rating]
-          upload.tag_string = params[:tag_string]
-          upload.status = "preprocessed"
-          upload.save!
-        rescue Exception => x
-          upload.update(status: "error: #{x.class} - #{x.message}", backtrace: x.backtrace.join("\n"))
+        if source.present?
+          file = Utils.download_for_upload(source, upload)
+        elsif params[:file].present?
+          file = params[:file]
         end
 
-        return upload
+        Utils.process_file(upload, file)
+
+        upload.rating = params[:rating]
+        upload.tag_string = params[:tag_string]
+        upload.status = "preprocessed"
+        upload.save!
+      rescue Exception => x
+        upload.update(status: "error: #{x.class} - #{x.message}", backtrace: x.backtrace.join("\n"))
       end
+
+      return upload
     end
 
     def finish!(upload = nil)
@@ -355,6 +370,12 @@ class UploadService
       pred.initialize_attributes
 
       pred.attributes = self.params
+
+      # if a file was uploaded after the preprocessing occurred,
+      # then process the file and overwrite whatever the preprocessor
+      # did
+      Utils.process_file(pred, pred.file) if pred.file.present?
+
       pred.status = "completed"
       pred.save
       return pred
@@ -425,9 +446,10 @@ class UploadService
         rating: post.rating,
         tag_string: replacement.tags,
         source: replacement.replacement_url,
-        file: replacement.replacement_file
+        file: replacement.replacement_file,
+        original_post_id: post.id
       )
-      upload = preprocessor.start!(CurrentUser.id)
+      upload = preprocessor.start!
       return if upload.is_errored?
       upload = preprocessor.finish!(upload)
       return if upload.is_errored?
@@ -506,11 +528,19 @@ class UploadService
     @params = params
   end
 
+  def delayed_start(uploader_id)
+    CurrentUser.as(uploader_id) do
+      start!
+    end
+  rescue ActiveRecord::RecordNotUnique
+    return
+  end
+
   def start!
     preprocessor = Preprocessor.new(params)
 
     if preprocessor.in_progress?
-      delay(queue: "default", run_at: 5.seconds.from_now).start!
+      delay(queue: "default", priority: -1, run_at: 5.seconds.from_now).delayed_start(CurrentUser.id)
       return preprocessor.predecessor
     end
 
@@ -583,13 +613,13 @@ class UploadService
       )
     end
 
-    notify_cropper(@post) if ImageCropper.enabled?
     upload.update(status: "completed", post_id: @post.id)
     @post
   end
 
   def convert_to_post(upload)
     Post.new.tap do |p|
+      p.has_cropped = true
       p.tag_string = upload.tag_string
       p.md5 = upload.md5
       p.file_ext = upload.file_ext
@@ -606,9 +636,5 @@ class UploadService
         p.is_pending = true
       end
     end
-  end
-
-  def notify_cropper(post)
-    # ImageCropper.notify(post)
   end
 end

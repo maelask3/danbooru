@@ -14,7 +14,13 @@ class CurrentUser
     end
   end
 
-  def self.as(user, &block)
+  def self.as(user_or_id, &block)
+    if user_or_id.is_a?(String) || user_or_id.is_a?(Integer)
+      user = User.find(user_or_id)
+    else
+      user = user_or_id
+    end
+
     scoped(user, &block)
   end
 
@@ -53,7 +59,7 @@ class CurrentUser
   end
 
   def self.root_url
-    Thread.current[:current_root_url] || "http://#{Danbooru.config.hostname}/"
+    Thread.current[:current_root_url] || "https://#{Danbooru.config.hostname}/"
   end
 
   def self.root_url=(root_url)

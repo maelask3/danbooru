@@ -15,7 +15,6 @@ class PostTest < ActiveSupport::TestCase
     CurrentUser.ip_addr = "127.0.0.1"
     mock_saved_search_service!
     mock_pool_archive_service!
-    ImageCropper.stubs(:enabled?).returns(false)
   end
 
   def teardown
@@ -2652,9 +2651,9 @@ class PostTest < ActiveSupport::TestCase
     should "generate the correct urls for animated gifs" do
       @post = FactoryBot.build(:post, md5: "deadbeef", file_ext: "gif", tag_string: "animated_gif")
 
-      assert_equal("http://#{Socket.gethostname}/data/preview/deadbeef.jpg", @post.preview_file_url)
-      assert_equal("http://#{Socket.gethostname}/data/deadbeef.gif", @post.large_file_url)
-      assert_equal("http://#{Socket.gethostname}/data/deadbeef.gif", @post.file_url)
+      assert_equal("https://#{Socket.gethostname}/data/preview/deadbeef.jpg", @post.preview_file_url)
+      assert_equal("https://#{Socket.gethostname}/data/deadbeef.gif", @post.large_file_url)
+      assert_equal("https://#{Socket.gethostname}/data/deadbeef.gif", @post.file_url)
     end
   end
 

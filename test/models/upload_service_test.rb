@@ -4,11 +4,11 @@ class UploadServiceTest < ActiveSupport::TestCase
   UGOIRA_CONTEXT = {
     "ugoira" => {
       "frame_data" => [
+        {"file" => "000000.jpg", "delay" => 200},
         {"file" => "000001.jpg", "delay" => 200},
         {"file" => "000002.jpg", "delay" => 200},
         {"file" => "000003.jpg", "delay" => 200},
-        {"file" => "000004.jpg", "delay" => 200},
-        {"file" => "000005.jpg", "delay" => 250}
+        {"file" => "000004.jpg", "delay" => 250}
       ],
       "content_type" => "image/jpeg"
     }
@@ -16,6 +16,34 @@ class UploadServiceTest < ActiveSupport::TestCase
 
   context "::Utils" do
     subject { UploadService::Utils }
+
+    context "#download_from_source" do
+      setup do
+        @jpeg = "https://upload.wikimedia.org/wikipedia/commons/c/c5/Moraine_Lake_17092005.jpg"
+        @ugoira = "https://i.pximg.net/img-zip-ugoira/img/2017/04/04/08/57/38/62247364_ugoira1920x1080.zip"
+      end
+
+      should "work on a jpeg" do
+        file = subject.download_from_source(@jpeg) do |context|
+          assert_not_nil(context[:downloaded_source])
+          assert_not_nil(context[:source])
+        end
+
+        assert_operator(File.size(file.path), :>, 0)
+        file.close
+      end
+
+      should "work on an ugoira url" do
+        file = subject.download_from_source(@ugoira, referer_url: "https://www.pixiv.net") do |context|
+          assert_not_nil(context[:downloaded_source])
+          assert_not_nil(context[:source])
+          assert_not_nil(context[:ugoira])
+        end
+
+        assert_operator(File.size(file.path), :>, 0)
+        file.close
+      end
+    end
 
     context ".calculate_ugoira_dimensions" do
       context "for a valid ugoira file" do
@@ -112,7 +140,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       should "run" do
-        subject.expects(:distribute_files).twice
+        subject.expects(:distribute_files).times(3)
         subject.process_file(@upload, @file)
         assert_equal("jpg", @upload.file_ext)
         assert_equal(28086, @upload.file_size)
@@ -134,9 +162,14 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "generate a preview and a video" do
-          preview, sample = subject.generate_resizes(@file, @upload)
+          preview, crop, sample = subject.generate_resizes(@file, @upload)
           assert_operator(File.size(preview.path), :>, 0)
+          assert_operator(File.size(crop.path), :>, 0)
           assert_operator(File.size(sample.path), :>, 0)
+          assert_equal(60, ImageSpec.new(preview.path).width)
+          assert_equal(60, ImageSpec.new(preview.path).height)
+          assert_equal(150, ImageSpec.new(crop.path).width)
+          assert_equal(150, ImageSpec.new(crop.path).height)
           preview.close
           preview.unlink
           sample.close
@@ -158,10 +191,17 @@ class UploadServiceTest < ActiveSupport::TestCase
           end
 
           should "generate a video" do
-            preview, sample = subject.generate_resizes(@file, @upload)
+            preview, crop, sample = subject.generate_resizes(@file, @upload)
             assert_operator(File.size(preview.path), :>, 0)
+            assert_operator(File.size(crop.path), :>, 0)
+            assert_equal(150, ImageSpec.new(preview.path).width)
+            assert_equal(150, ImageSpec.new(preview.path).height)
+            assert_equal(150, ImageSpec.new(crop.path).width)
+            assert_equal(150, ImageSpec.new(crop.path).height)
             preview.close
             preview.unlink
+            crop.close
+            crop.unlink
           end
         end
 
@@ -174,10 +214,17 @@ class UploadServiceTest < ActiveSupport::TestCase
           end
 
           should "generate a video" do
-            preview, sample = subject.generate_resizes(@file, @upload)
+            preview, crop, sample = subject.generate_resizes(@file, @upload)
             assert_operator(File.size(preview.path), :>, 0)
+            assert_operator(File.size(crop.path), :>, 0)
+            assert_equal(150, ImageSpec.new(preview.path).width)
+            assert_equal(150, ImageSpec.new(preview.path).height)
+            assert_equal(150, ImageSpec.new(crop.path).width)
+            assert_equal(150, ImageSpec.new(crop.path).height)
             preview.close
             preview.unlink
+            crop.close
+            crop.unlink
           end
         end
       end
@@ -202,8 +249,9 @@ class UploadServiceTest < ActiveSupport::TestCase
           end
 
           should "generate a preview" do
-            preview, sample = subject.generate_resizes(@file, @upload)
+            preview, crop, sample = subject.generate_resizes(@file, @upload)
             assert_operator(File.size(preview.path), :>, 0)
+            assert_operator(File.size(crop.path), :>, 0)
             assert_operator(File.size(sample.path), :>, 0)
             preview.close
             preview.unlink
@@ -218,8 +266,9 @@ class UploadServiceTest < ActiveSupport::TestCase
           end
 
           should "generate a preview" do
-            preview, sample = subject.generate_resizes(@file, @upload)
+            preview, crop, sample = subject.generate_resizes(@file, @upload)
             assert_operator(File.size(preview.path), :>, 0)
+            assert_operator(File.size(crop.path), :>, 0)
             assert_operator(File.size(sample.path), :>, 0)
             preview.close
             preview.unlink
@@ -234,8 +283,9 @@ class UploadServiceTest < ActiveSupport::TestCase
           end
 
           should "generate a preview" do
-            preview, sample = subject.generate_resizes(@file, @upload)
+            preview, crop, sample = subject.generate_resizes(@file, @upload)
             assert_operator(File.size(preview.path), :>, 0)
+            assert_operator(File.size(crop.path), :>, 0)
             assert_operator(File.size(sample.path), :>, 0)
             preview.close
             preview.unlink
@@ -275,41 +325,6 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
       end
     end
-
-    context ".download_from_source" do
-      setup do
-        @ugoira_source = "http://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247364"
-        @jpeg_source = "https://upload.wikimedia.org/wikipedia/commons/c/c5/Moraine_Lake_17092005.jpg"
-        @upload = Upload.new
-      end
-
-      should "work on a jpeg" do
-        file = subject.download_from_source(@jpeg_source) do |context|
-          assert_not_nil(context[:downloaded_source])
-          assert_not_nil(context[:source])
-        end
-
-        assert_operator(File.size(file.path), :>, 0)
-        file.close
-      end
-
-      should "work on an ugoira url" do
-        file = subject.download_from_source(@ugoira_source, referer_url: "https://www.pixiv.net") do |context|
-          assert_not_nil(context[:downloaded_source])
-          assert_not_nil(context[:source])
-          assert_not_nil(context[:ugoira])
-        end
-
-        assert_operator(File.size(file.path), :>, 0)
-        file.close
-      end
-
-      should "initialize fields on the upload" do
-        subject.download_for_upload(@ugoira_source, @upload)
-        assert_not_nil(@upload.source)
-        assert_not_nil(@upload.context)
-      end
-    end
   end
 
   context "::Preprocessor" do
@@ -333,7 +348,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       should "work for a jpeg" do
         @service = subject.new(source: @jpeg)
-        @upload = @service.start!(CurrentUser.id)
+        @upload = @service.start!
         assert_equal("preprocessed", @upload.status)
         assert_not_nil(@upload.md5)
         assert_equal("jpg", @upload.file_ext)
@@ -346,7 +361,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       should "work for an ugoira" do
         @service = subject.new(source: @ugoira)
-        @upload = @service.start!(CurrentUser.id)
+        @upload = @service.start!
         assert_equal("preprocessed", @upload.status)
         assert_not_nil(@upload.md5)
         assert_equal("zip", @upload.file_ext)
@@ -358,7 +373,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       should "work for a video" do
         @service = subject.new(source: @video)
-        @upload = @service.start!(CurrentUser.id)
+        @upload = @service.start!
         assert_equal("preprocessed", @upload.status)
         assert_not_nil(@upload.md5)
         assert_equal("mp4", @upload.file_ext)
@@ -375,7 +390,7 @@ class UploadServiceTest < ActiveSupport::TestCase
         
         should "leave the upload in an error state" do
           @service = subject.new(source: @video)
-          @upload = @service.start!(CurrentUser.id)
+          @upload = @service.start!
           assert_match(/error:/, @upload.status)
         end
       end
@@ -479,12 +494,14 @@ class UploadServiceTest < ActiveSupport::TestCase
 
     context "for a source replacement" do
       setup do
-        @new_url = "https://upload.wikimedia.org/wikipedia/commons/c/c5/Moraine_Lake_17092005.jpg"
+        @new_url = "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg"
+        @new_md5 = "d34e4cf0a437a5d65f8e82b7bcd02606"
         travel_to(1.month.ago) do
           @user = FactoryBot.create(:user)
         end
         as_user do
-          @post = FactoryBot.create(:post, uploader_ip_addr: "127.0.0.2")
+          @post_md5 = "710fd9cba4ef37260f9152ffa9d154d8"
+          @post = FactoryBot.create(:post, source: "https://raikou1.donmai.us/71/0f/#{@post_md5}.png", file_ext: "png", md5: @post_md5, uploader_ip_addr: "127.0.0.2")
           @post.stubs(:queue_delete_files)
           @replacement = FactoryBot.create(:post_replacement, post: @post, replacement_url: @new_url)
         end
@@ -492,10 +509,34 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       subject { UploadService::Replacer.new(post: @post, replacement: @replacement) }
 
+      context "when replacing with its own source" do
+        should "work" do
+          as_user { @post.replace!(replacement_url: @post.source) }
+          assert_equal(@post_md5, @post.md5)
+          assert_match(/#{@post_md5}/, @post.file_path)
+        end
+      end
+
+      context "when an upload with the same MD5 already exists" do
+        setup do
+          @post.update(md5: @new_md5)
+          as_user do
+            @post2 = FactoryBot.create(:post)
+            @post2.stubs(:queue_delete_files)
+          end
+        end
+
+        should "throw an error" do
+          assert_raises(ActiveRecord::RecordNotUnique) do
+            as_user { @post2.replace!(replacement_url: @new_url) }
+          end
+        end
+      end
+
       context "a post when given a final_source" do
         should "change the source to the final_source" do
-          replacement_url = "http://data.tumblr.com/afed9f5b3c33c39dc8c967e262955de2/tumblr_orwwptNBCE1wsfqepo1_raw.png"
-          final_source = "https://noizave.tumblr.com/post/162094447052"
+          replacement_url = "https://raikou1.donmai.us/fd/b4/fdb47f79fb8da82e66eeb1d84a1cae8d.jpg"
+          final_source = "https://raikou1.donmai.us/71/0f/710fd9cba4ef37260f9152ffa9d154d8.png"
 
           as_user { @post.replace!(replacement_url: replacement_url, final_source: final_source) }
 
@@ -715,10 +756,18 @@ class UploadServiceTest < ActiveSupport::TestCase
             as_user do
               @post1.replace!(replacement_url: "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247350")
               @post2.replace!(replacement_url: "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247364")
-              @post2.replace!(replacement_url: "https://www.google.com/intl/en_ALL/images/logo.gif")
+              assert_equal("4ceadc314938bc27f3574053a3e1459a", @post1.md5)
+              assert_equal("cad1da177ef309bf40a117c17b8eecf5", @post2.md5)
+              @post2.reload
+              @post2.replace!(replacement_url: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg")
+              assert_equal("d34e4cf0a437a5d65f8e82b7bcd02606", @post2.md5)
               Upload.destroy_all
+              @post1.reload
+              @post2.reload
               @post1.replace!(replacement_url: "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247364")
               @post2.replace!(replacement_url: "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247350")
+              assert_equal("cad1da177ef309bf40a117c17b8eecf5", @post1.md5)
+              assert_equal("4ceadc314938bc27f3574053a3e1459a", @post2.md5)
             end
 
             Timecop.travel(Time.now + PostReplacement::DELETION_GRACE_PERIOD + 1.day) do
@@ -811,7 +860,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       should "should fail validation" do
-        service = subject.new(file: upload_file("test/files/test-static-32x32.gif"))
+        service = subject.new(file: upload_file("test/files/test-large.jpg"))
         upload = service.start!
         assert_match(/image resolution is too large/, upload.status)
       end
@@ -839,7 +888,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
     context "with a preprocessed predecessor" do
       setup do
-        @predecessor = FactoryBot.create(:source_upload, status: "preprocessed", source: @source, file_size: 0, md5: "something", image_height: 0, image_width: 0, file_ext: "jpg")
+        @predecessor = FactoryBot.create(:source_upload, status: "preprocessed", source: @source, image_height: 0, image_width: 0, file_size: 1, md5: 'blank', file_ext: "jpg")
         @tags = 'hello world'
       end
 
