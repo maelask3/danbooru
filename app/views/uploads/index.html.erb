@@ -47,6 +47,14 @@
               </span>
               <br>
 
+              <% if upload.referer_url.present? %>
+                <span class="info">
+                  <strong>Referer</strong>
+                  <%= URI.parse(upload.referer_url).host rescue nil %>
+                </span>
+                <br>
+              <% end %>
+
               <span class="info">
                 <strong>Tags</strong>
                 <%= TagSetPresenter.new(upload.tag_string.split).inline_tag_list_html(self) %>
@@ -58,7 +66,7 @@
               <br><%= time_ago_in_words_tagged  upload.created_at %>
             </td>
             <td class="col-normal">
-              <%= link_to upload.presenter.status(self), uploads_path(search: params[:search].merge(status: upload.status)) %>
+              <%= render_status(upload) %>
             </td>
           </tr>
         <% end %>

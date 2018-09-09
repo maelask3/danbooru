@@ -1,8 +1,9 @@
 class Ban < ApplicationRecord
   after_create :create_feedback
   after_create :update_user_on_create
-  after_create :create_mod_action
+  after_create :create_ban_mod_action
   after_destroy :update_user_on_destroy
+  after_destroy :create_unban_mod_action
   belongs_to :user
   belongs_to :banner, :class_name => "User"
   validate :user_is_inferior
@@ -43,9 +44,7 @@ class Ban < ApplicationRecord
       q = q.where("user_id = ?", params[:user_id].to_i)
     end
 
-    if params[:reason_matches].present?
-      q = q.reason_matches(params[:reason_matches])
-    end
+    q = q.attribute_matches(:reason, params[:reason_matches])
 
     q = q.expired if params[:expired].to_s.truthy?
     q = q.unexpired if params[:expired].to_s.falsy?
@@ -58,6 +57,12 @@ class Ban < ApplicationRecord
     end
 
     q
+  end
+
+  def self.prune!
+    expired.includes(:user).find_each do |ban|
+      ban.user.unban! if ban.user.ban_expired?
+    end
   end
 
   def initialize_banner_id
@@ -120,7 +125,11 @@ class Ban < ApplicationRecord
     user.feedback.create(category: "negative", body: "Banned for #{humanized_duration}: #{reason}")
   end
 
-  def create_mod_action
-    ModAction.log(%{Banned <@#{user_name}> for #{humanized_duration}: #{reason}},:user_ban)
+  def create_ban_mod_action
+    ModAction.log(%{Banned <@#{user_name}> for #{humanized_duration}: #{reason}}, :user_ban)
+  end
+
+  def create_unban_mod_action
+    ModAction.log(%{Unbanned <@#{user_name}>}, :user_unban)
   end
 end

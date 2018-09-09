@@ -17,10 +17,12 @@ class ModAction < ApplicationRecord
   enum category: {
     user_delete: 2,
     user_ban: 4,
+    user_unban: 5,
     user_name_change: 6,
-    user_level: 7,
+    user_level_change: 7,
     user_approval_privilege: 8,
     user_upload_privilege: 9,
+    user_account_upgrade: 19,
     user_feedback_update: 21,
     user_feedback_delete: 22,
     post_delete: 42,
@@ -53,6 +55,8 @@ class ModAction < ApplicationRecord
 
   def self.search(params)
     q = super
+
+    q = q.attribute_matches(:description, params[:description_matches])
 
     if params[:creator_id].present?
       q = q.where("creator_id = ?", params[:creator_id].to_i)

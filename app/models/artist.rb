@@ -50,6 +50,7 @@ class Artist < ApplicationRecord
         "donmai.us/users", # http://danbooru.donmai.us/users/507162/
         "derpibooru.org",
         "derpibooru.org/tags", # https://derpibooru.org/tags/artist-colon-checkerboardazn
+        "deviantart.com",
         "deviantart.net",
         "dlsite.com",
         "doujinshi.org",
@@ -151,7 +152,7 @@ class Artist < ApplicationRecord
         url = ArtistUrl.normalize(url)
         artists = []
 
-        # return [] unless Sources::Site.new(url).normalized_for_artist_finder?
+        # return [] unless Sources::Strategies.find(url).normalized_for_artist_finder?
 
         while artists.empty? && url.size > 10
           u = url.sub(/\/+$/, "") + "/"
@@ -480,13 +481,8 @@ class Artist < ApplicationRecord
     end
 
     def search_for_profile(url)
-      source = Sources::Site.new(url)
-      if source.strategy
-        source.get
-        find_all_by_url(source.profile_url)
-      else
-        nil
-      end
+      source = Sources::Strategies.find(url)
+      find_all_by_url(source.profile_url)
     rescue Net::OpenTimeout, PixivApiClient::Error
       raise if Rails.env.test?
       nil

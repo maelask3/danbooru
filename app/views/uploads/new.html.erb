@@ -12,22 +12,19 @@
       <% end %>
 
       <%= render "image" %>
-      <%= render "post", :post => @post %>
-      <%= render "sources/info", :source => @source %>
+      <%= render "related_posts", source: @source %>
+      <%= render "sources/info" %>
 
       <div id="client-errors" class="error-messages ui-state-error ui-corner-all" style="display:none"></div>
 
       <%= form_for(@upload, :html => {:multipart => true, :class => "simple_form", :id => "form"}) do |f| %>
-        <%= hidden_field_tag :url, params[:url] %>
-        <%= hidden_field_tag :ref, params[:ref] %>
-        <%= hidden_field_tag :normalized_url, @normalized_url %>
         <%= f.hidden_field :md5_confirmation %>
-        <%= f.hidden_field :referer_url, :value => @source.try(:referer_url) %>
+        <%= f.hidden_field :referer_url, value: params[:ref] %>
 
         <% if CurrentUser.can_upload_free? %>
           <div class="input">
             <label for="upload_as_pending">
-              <%= f.check_box :as_pending %>
+              <%= f.check_box :as_pending, :checked => params[:as_pending].present? %>
               Upload for approval
             </label>
           </div>
@@ -44,11 +41,7 @@
 
         <div class="input">
           <%= f.label :source %>
-          <% if params[:url].present? %>
-            <%= f.text_field :source, :size => 50, :value => params[:url] %>
-          <% else %>
-            <%= f.text_field :source, :size => 50 %>
-          <% end %>
+          <%= f.text_field :source, :size => 50, :value => params[:url] %>
           <%= button_tag "Similar", :id => "similar-button", :type => "button", :class => "ui-button ui-widget ui-corner-all sub gradient" %>
           <%= button_tag "Artist", :id => "find-artist-button", :type => "button", :class => "ui-button ui-widget ui-corner-all sub gradient" %>
           <span class="hint">You can enter a URL to have <%= Danbooru.config.app_name %> automatically download and process it</span>
@@ -58,20 +51,20 @@
           <%= f.label :rating %>
 
           <fieldset class="ratings">
-            <%= f.radio_button :rating, :e %>
+            <%= f.radio_button :rating, :e, :checked => (params[:rating] == "e") %>
             <%= f.label :rating_e, "Explicit", :title => "Hardcore porn, visible genitals" %>
 
-            <%= f.radio_button :rating, :q %>
+            <%= f.radio_button :rating, :q, :checked => (params[:rating] == "q") %>
             <%= f.label :rating_q, "Questionable", :title => "Nudity, anything erotic" %>
 
-            <%= f.radio_button :rating, :s %>
+            <%= f.radio_button :rating, :s, :checked => (params[:rating] == "s") %>
             <%= f.label :rating_s, "Safe", :title => "Everything else" %>
           </fieldset>
         </div>
 
         <div class="input">
           <%= f.label :parent_id, "Parent ID" %>
-          <%= f.text_field :parent_id %>
+          <%= f.text_field :parent_id, :value => params[:parent_id] %>
         </div>
 
         <div class="input">
@@ -81,38 +74,28 @@
           <div class="artist-commentary" style="display: none;">
             <div class="input">
               <%= f.label :artist_commentary_title, "Title" %>
-              <%= f.text_field :artist_commentary_title %>
+              <%= f.text_field :artist_commentary_title, :value => params[:artist_commentary_title] %>
             </div>
 
             <div class="input">
               <%= f.label :artist_commentary_desc, "Description" %>
-              <%= f.text_area :artist_commentary_desc, :size => "60x5" %>
+              <%= f.text_area :artist_commentary_desc, :size => "60x5", :value => params[:artist_commentary_desc] %>
             </div>
 
             <div class="input">
               <label for="upload_include_artist_commentary">
-                <%= f.check_box :include_artist_commentary %>
+                <%= f.check_box :include_artist_commentary, :checked => params[:include_artist_commentary].present? %>
                 Include Commentary
               </label>
             </div>
           </div>
         </div>
 
-        <% if Danbooru.config.iqdbs_server %>
-          <% if params[:url] %>
-            <div class="input" id="iqdb-similar">
-              <p><em>Loading similar...</em></p>
-            </div>
-          <% else %>
-            <div class="input" id="iqdb-similar" style="display: none;"></div>
-          <% end %>
-        <% end %>
-
         <div class="input">
           <div>
             <%= f.label :tag_string, "Tags" %>
-            <%= f.text_area :tag_string, :size => "60x5", :spellcheck => false, :data => { :autocomplete => "tag-edit" } %>
-            <span id="open-edit-dialog" class="ui-icon ui-icon-arrow-1-ne" title="detach" style="display: none;"/>
+            <%= f.text_area :tag_string, :size => "60x5", :spellcheck => false, :"data-autocomplete" => "tag-edit", :"data-shortcut" => "e", :value => params[:tag_string] %>
+            <span id="open-edit-dialog" class="ui-icon ui-icon-arrow-1-ne" title="detach" style="display: none;" data-shortcut="shift+e"/>
           </div>
 
           <%= button_tag "Related tags", :id => "related-tags-button", :type => "button", :class => "ui-button ui-widget ui-corner-all sub gradient" %>
@@ -124,12 +107,6 @@
 
         <div class="input">
           <%= submit_tag "Submit", :id => "submit-button", :class => "large ui-button ui-widget ui-corner-all gradient", data: {disable_with: false} %>
-        </div>
-
-        <div id="artist-tags-container">
-          <h1>Artist</h1>
-          <div id="artist-tags" class="related-tags">
-          </div>
         </div>
 
         <div id="related-tags-container">
@@ -154,6 +131,7 @@
   <script>
     $(function() {
       var enabled = true;
+      var maxFilesize = <%= Danbooru.config.max_file_size.to_json %> / (1024 * 1024);
 
       if (!window.FileReader) {
         enabled = false;
@@ -165,11 +143,12 @@
       }
 
       $("#filedropzone").dropzone({ 
-        paramName: "file", 
+        paramName: "upload[file]", 
         url: "/uploads/preprocess", 
         createImageThumbnails: false,
         addRemoveLinks: false,
         maxFiles: 1,
+        maxFilesize: maxFilesize,
         acceptedFiles: "image/jpeg,image/png,image/gif,video/mp4,video/webm,.swf",
         previewTemplate: '<div class="dz-preview dz-file-preview"><div class="dz-details"><div class="dz-filename"><span data-dz-name></span></div><div class="dz-size" data-dz-size></div></div><div class="dz-progress"><span class="dz-upload" data-dz-uploadprogress></span></div><div class="dz-error-message"><span data-dz-errormessage></span></div></div>',
         init: function() {

@@ -1,6 +1,6 @@
 class Tag < ApplicationRecord
   COSINE_SIMILARITY_RELATED_TAG_THRESHOLD = 300
-  METATAGS = "-user|user|-approver|approver|commenter|comm|noter|noteupdater|artcomm|-pool|pool|ordpool|-favgroup|favgroup|-fav|fav|ordfav|md5|-rating|rating|-locked|locked|width|height|mpixels|ratio|score|favcount|filesize|source|-source|id|-id|date|age|order|limit|-status|status|tagcount|parent|-parent|child|pixiv_id|pixiv|search|upvote|downvote|filetype|-filetype|flagger|-flagger|appealer|-appealer|" +
+  METATAGS = "-user|user|-approver|approver|commenter|comm|noter|noteupdater|artcomm|-pool|pool|ordpool|-favgroup|favgroup|-fav|fav|ordfav|md5|-rating|rating|-locked|locked|width|height|mpixels|ratio|score|favcount|filesize|source|-source|id|-id|date|age|order|limit|-status|status|tagcount|parent|-parent|child|pixiv_id|pixiv|search|upvote|downvote|filetype|-filetype|flagger|-flagger|appealer|-appealer|disapproval|-disapproval|" +
     TagCategory.short_name_list.map {|x| "#{x}tags"}.join("|")
   SUBQUERY_METATAGS = "commenter|comm|noter|noteupdater|artcomm|flagger|-flagger|appealer|-appealer"
   has_one :wiki_page, :foreign_key => "title", :primary_key => "name"
@@ -577,6 +577,14 @@ class Tag < ApplicationRecord
             user_id = User.name_to_id(g2)
             q[:artcomm_ids] << user_id unless user_id.blank?
 
+          when "disapproval"
+            q[:disapproval] ||= []
+            q[:disapproval] << g2
+
+          when "-disapproval"
+            q[:disapproval_neg] ||= []
+            q[:disapproval_neg] << g2
+
           when "-pool"
             if g2.downcase == "none"
               q[:pool] = "any"
@@ -763,7 +771,11 @@ class Tag < ApplicationRecord
             q[:filetype_neg] = g2.downcase
 
           when "pixiv_id", "pixiv"
-            q[:pixiv_id] = parse_helper(g2)
+            if g2.downcase == "any" || g2.downcase == "none"
+              q[:pixiv_id] = g2.downcase
+            else
+              q[:pixiv_id] = parse_helper(g2)
+            end
 
           when "upvote"
             if CurrentUser.user.is_moderator?
@@ -802,6 +814,7 @@ class Tag < ApplicationRecord
         self.related_tags = RelatedTagCalculator.calculate_from_sample_to_array(name).join(" ")
       end
       self.related_tags_updated_at = Time.now
+      fix_post_count if post_count > 20 && rand(post_count) <= 1
       save
     rescue ActiveRecord::StatementInvalid
     end

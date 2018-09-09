@@ -68,7 +68,6 @@ class PostTest < ActiveSupport::TestCase
       end
 
       should "decrement the user's favorite count" do
-        @post.add_favorite!(@post.uploader)
         assert_difference(["@post.uploader.reload.favorite_count"], -1) do
           @post.expunge!
         end
@@ -1481,62 +1480,42 @@ class PostTest < ActiveSupport::TestCase
             assert_equal(18557054, @post.pixiv_id)
             @post.pixiv_id = nil
           end
-
-          context "but doesn't have a pixiv id" do
-            should "save the pixiv id" do
-              @post.pixiv_id = 1234
-              @post.update(source: "http://i1.pixiv.net/novel-cover-original/img/2016/11/03/20/10/58/7436075_f75af69f3eacd1656d3733c72aa959cf.jpg")
-              assert_nil(@post.pixiv_id)
-
-              @post.pixiv_id = 1234
-              @post.update(source: "http://i2.pixiv.net/background/img/2016/10/30/12/27/30/7059005_da9946b806c10d391a81ed1117cd33d6.jpg")
-              assert_nil(@post.pixiv_id)
-
-              @post.pixiv_id = 1234
-              @post.update(source: "http://i1.pixiv.net/img15/img/omega777/novel/2612734.jpg")
-              assert_nil(@post.pixiv_id)
-
-              @post.pixiv_id = 1234
-              @post.update(source: "http://img08.pixiv.net/profile/nice/1408837.jpg")
-              assert_nil(@post.pixiv_id)
-            end
-          end
         end
 
         should "normalize pixiv links" do
           @post.source = "http://i2.pixiv.net/img12/img/zenze/39749565.png"
-          assert_equal("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=39749565", @post.normalized_source)
+          assert_equal("https://www.pixiv.net/member_illust.php?mode=medium&illust_id=39749565", @post.normalized_source)
 
           @post.source = "http://i1.pixiv.net/img53/img/themare/39735353_big_p1.jpg"
-          assert_equal("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=39735353", @post.normalized_source)
+          assert_equal("https://www.pixiv.net/member_illust.php?mode=medium&illust_id=39735353", @post.normalized_source)
 
           @post.source = "http://i1.pixiv.net/c/150x150/img-master/img/2010/11/30/08/39/58/14901720_p0_master1200.jpg"
-          assert_equal("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=14901720", @post.normalized_source)
+          assert_equal("https://www.pixiv.net/member_illust.php?mode=medium&illust_id=14901720", @post.normalized_source)
 
           @post.source = "http://i1.pixiv.net/img-original/img/2010/11/30/08/39/58/14901720_p0.png"
-          assert_equal("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=14901720", @post.normalized_source)
+          assert_equal("https://www.pixiv.net/member_illust.php?mode=medium&illust_id=14901720", @post.normalized_source)
 
           @post.source = "http://i2.pixiv.net/img-zip-ugoira/img/2014/08/05/06/01/10/44524589_ugoira1920x1080.zip"
-          assert_equal("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=44524589", @post.normalized_source)
+          assert_equal("https://www.pixiv.net/member_illust.php?mode=medium&illust_id=44524589", @post.normalized_source)
         end
 
         should "normalize nicoseiga links" do
           @post.source = "http://lohas.nicoseiga.jp/priv/3521156?e=1382558156&h=f2e089256abd1d453a455ec8f317a6c703e2cedf"
-          assert_equal("http://seiga.nicovideo.jp/seiga/im3521156", @post.normalized_source)
+          assert_equal("https://seiga.nicovideo.jp/seiga/im3521156", @post.normalized_source)
           @post.source = "http://lohas.nicoseiga.jp/priv/b80f86c0d8591b217e7513a9e175e94e00f3c7a1/1384936074/3583893"
-          assert_equal("http://seiga.nicovideo.jp/seiga/im3583893", @post.normalized_source)
+          assert_equal("https://seiga.nicovideo.jp/seiga/im3583893", @post.normalized_source)
         end
 
         should "normalize twitpic links" do
           @post.source = "http://d3j5vwomefv46c.cloudfront.net/photos/large/820960031.jpg?1384107199"
-          assert_equal("http://twitpic.com/dks0tb", @post.normalized_source)
+          assert_equal("https://twitpic.com/dks0tb", @post.normalized_source)
         end
 
         should "normalize deviantart links" do
           @post.source = "http://fc06.deviantart.net/fs71/f/2013/295/d/7/you_are_already_dead__by_mar11co-d6rgm0e.jpg"
-          assert_equal("http://mar11co.deviantart.com/art/You-Are-Already-Dead-408921710", @post.normalized_source)
+          assert_equal("https://www.deviantart.com/mar11co/art/You-Are-Already-Dead-408921710", @post.normalized_source)
           @post.source = "http://fc00.deviantart.net/fs71/f/2013/337/3/5/35081351f62b432f84eaeddeb4693caf-d6wlrqs.jpg"
-          assert_equal("http://deviantart.com/deviation/417560500", @post.normalized_source)
+          assert_equal("https://deviantart.com/deviation/417560500", @post.normalized_source)
         end
 
         should "normalize karabako links" do
@@ -1551,10 +1530,10 @@ class PostTest < ActiveSupport::TestCase
 
         should "normalize hentai foundry links" do
           @post.source = "http://pictures.hentai-foundry.com//a/AnimeFlux/219123.jpg"
-          assert_equal("http://www.hentai-foundry.com/pictures/user/AnimeFlux/219123", @post.normalized_source)
+          assert_equal("https://www.hentai-foundry.com/pictures/user/AnimeFlux/219123", @post.normalized_source)
 
           @post.source = "http://pictures.hentai-foundry.com/a/AnimeFlux/219123/Mobile-Suit-Equestria-rainbow-run.jpg"
-          assert_equal("http://www.hentai-foundry.com/pictures/user/AnimeFlux/219123", @post.normalized_source)
+          assert_equal("https://www.hentai-foundry.com/pictures/user/AnimeFlux/219123", @post.normalized_source)
         end
       end
 
@@ -1720,13 +1699,13 @@ class PostTest < ActiveSupport::TestCase
         assert_equal(0, @post.score)
       end
 
-      should "update the fav strings ont he post" do
+      should "update the fav strings on the post" do
         @post.add_favorite!(@user)
         @post.reload
         assert_equal("fav:#{@user.id}", @post.fav_string)
         assert(Favorite.exists?(:user_id => @user.id, :post_id => @post.id))
 
-        @post.add_favorite!(@user)
+        assert_raises(Favorite::Error) { @post.add_favorite!(@user) }
         @post.reload
         assert_equal("fav:#{@user.id}", @post.fav_string)
         assert(Favorite.exists?(:user_id => @user.id, :post_id => @post.id))
@@ -2131,6 +2110,7 @@ class PostTest < ActiveSupport::TestCase
       banned  = FactoryBot.create(:post, is_banned: true)
       all = [banned, deleted, flagged, pending]
 
+      assert_tag_match([flagged, pending], "status:modqueue")
       assert_tag_match([pending], "status:pending")
       assert_tag_match([flagged], "status:flagged")
       assert_tag_match([deleted], "status:deleted")
@@ -2139,11 +2119,23 @@ class PostTest < ActiveSupport::TestCase
       assert_tag_match(all, "status:any")
       assert_tag_match(all, "status:all")
 
+      assert_tag_match(all - [flagged, pending], "-status:modqueue")
       assert_tag_match(all - [pending], "-status:pending")
       assert_tag_match(all - [flagged], "-status:flagged")
       assert_tag_match(all - [deleted], "-status:deleted")
       assert_tag_match(all - [banned],  "-status:banned")
       assert_tag_match(all, "-status:active")
+    end
+
+    should "return posts for the status:unmoderated metatag" do
+      flagged = FactoryBot.create(:post, is_flagged: true)
+      pending = FactoryBot.create(:post, is_pending: true)
+      disapproved = FactoryBot.create(:post, is_pending: true)
+
+      FactoryBot.create(:post_flag, post: flagged)
+      FactoryBot.create(:post_disapproval, post: disapproved, reason: "disinterest")
+
+      assert_tag_match([pending, flagged], "status:unmoderated")
     end
 
     should "respect the 'Deleted post filter' option when using the status:banned metatag" do
@@ -2224,19 +2216,30 @@ class PostTest < ActiveSupport::TestCase
       post = FactoryBot.create(:post, :source => url)
       assert_tag_match([post], "pixiv_id:789")
     end
-    
+
     should "return posts for a pixiv id search (type 3)" do
       url = "http://www.pixiv.net/member_illust.php?mode=manga_big&illust_id=19113635&page=0"
       post = FactoryBot.create(:post, :source => url)
       assert_tag_match([post], "pixiv_id:19113635")
     end
-    
+
     should "return posts for a pixiv id search (type 4)" do
       url = "http://i2.pixiv.net/img70/img/disappearedstump/34551381_p3.jpg?1364424318"
       post = FactoryBot.create(:post, :source => url)
       assert_tag_match([post], "pixiv_id:34551381")
     end
-    
+
+    should "return posts for a pixiv_id:any search" do
+      url = "http://i1.pixiv.net/img-original/img/2014/10/02/13/51/23/46304396_p0.png"
+      post = FactoryBot.create(:post, source: url)
+      assert_tag_match([post], "pixiv_id:any")
+    end
+
+    should "return posts for a pixiv_id:none search" do
+      post = FactoryBot.create(:post)
+      assert_tag_match([post], "pixiv_id:none")
+    end
+
     # should "return posts for a pixiv novel id search" do
     #   url = "http://www.pixiv.net/novel/show.php?id=2156088"
     #   post = FactoryBot.create(:post, :source => url)
@@ -2295,6 +2298,24 @@ class PostTest < ActiveSupport::TestCase
 
         assert_tag_match([upvoted],   "upvote:#{CurrentUser.name}")
         assert_tag_match([downvoted], "downvote:#{CurrentUser.name}")
+      end
+    end
+
+    should "return posts for a disapproval:<type> metatag" do
+      CurrentUser.scoped(FactoryBot.create(:mod_user)) do
+        pending     = FactoryBot.create(:post, is_pending: true)
+        disapproved = FactoryBot.create(:post, is_pending: true)
+        disapproval = FactoryBot.create(:post_disapproval, post: disapproved, reason: "disinterest")
+
+        assert_tag_match([pending],     "disapproval:none")
+        assert_tag_match([disapproved], "disapproval:any")
+        assert_tag_match([disapproved], "disapproval:disinterest")
+        assert_tag_match([],            "disapproval:breaks_rules")
+
+        assert_tag_match([disapproved],          "-disapproval:none")
+        assert_tag_match([pending],              "-disapproval:any")
+        assert_tag_match([pending],              "-disapproval:disinterest")
+        assert_tag_match([disapproved, pending], "-disapproval:breaks_rules")
       end
     end
 

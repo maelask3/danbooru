@@ -18,53 +18,31 @@ class ArtistUrl < ApplicationRecord
     if url.nil?
       nil
     else
-      url = url.gsub(/^https:\/\//, "http://")
-      url = url.gsub(/^http:\/\/blog\d+\.fc2/, "http://blog.fc2")
-      url = url.gsub(/^http:\/\/blog-imgs-\d+\.fc2/, "http://blog.fc2")
-      url = url.gsub(/^http:\/\/blog-imgs-\d+-\w+\.fc2/, "http://blog.fc2")
-      url = url.sub(%r!(http://seiga.nicovideo.jp/user/illust/\d+)\?.+!, '\1/')
+      url = url.sub(%r!^https://!, "http://")
+      url = url.sub(%r!^http://([^/]+)!i) { |domain| domain.downcase }
+      url = url.sub(%r!^http://blog\d+\.fc2!, "http://blog.fc2")
+      url = url.sub(%r!^http://blog-imgs-\d+\.fc2!, "http://blog.fc2")
+      url = url.sub(%r!^http://blog-imgs-\d+-\w+\.fc2!, "http://blog.fc2")
+      # url = url.sub(%r!^(http://seiga.nicovideo.jp/user/illust/\d+)\?.+!, '\1/')
       url = url.sub(%r!^http://pictures.hentai-foundry.com//!, "http://pictures.hentai-foundry.com/")
 
       # the strategy won't always work for twitter because it looks for a status
-      url = url.downcase if url =~ /https?:\/\/(?:mobile\.)?twitter\.com/
-
+      url = url.downcase if url =~ %r!^https?://(?:mobile\.)?twitter\.com!
+        
       begin
-        url = Sources::Site.new(url).normalize_for_artist_finder!
+        source = Sources::Strategies.find(url)
+  
+        if !source.normalized_for_artist_finder? && source.normalizable_for_artist_finder?
+          url = source.normalize_for_artist_finder
+        end
       rescue Net::OpenTimeout, PixivApiClient::Error
         raise if Rails.env.test?
-      rescue Sources::Site::NoStrategyError
       end
+      
       url = url.gsub(/\/+\Z/, "")
+      url = url.gsub(%r!^https://!, "http://")
       url + "/"
     end
-  end
-
-  def self.legacy_normalize(url)
-    if url.nil?
-      nil
-    else
-      url = url.gsub(/^https:\/\//, "http://")
-      url = url.gsub(/^http:\/\/blog\d+\.fc2/, "http://blog.fc2")
-      url = url.gsub(/^http:\/\/blog-imgs-\d+\.fc2/, "http://blog.fc2")
-      url = url.gsub(/^http:\/\/blog-imgs-\d+-\w+\.fc2/, "http://blog.fc2")
-      url = url.gsub(/^http:\/\/img\d+\.pixiv\.net/, "http://img.pixiv.net")
-      url = url.gsub(/^http:\/\/i\d+\.pixiv\.net\/img\d+/, "http://img.pixiv.net")
-      url = url.gsub(/\/+\Z/, "")
-      url + "/"
-    end
-  end
-
-  def self.normalize_for_search(url)
-    if url =~ /\.\w+\Z/ && url =~ /\w\/\w/
-      url = File.dirname(url)
-    end
-
-    url = url.gsub(/^https:\/\//, "http://")
-    url = url.gsub(/^http:\/\/blog\d+\.fc2/, "http://blog*.fc2")
-    url = url.gsub(/^http:\/\/blog-imgs-\d+\.fc2/, "http://blog*.fc2")
-    url = url.gsub(/^http:\/\/blog-imgs-\d+-\w+\.fc2/, "http://blog*.fc2")
-    url = url.gsub(/^http:\/\/img\d+\.pixiv\.net/, "http://img*.pixiv.net")
-    url = url.gsub(/^http:\/\/i\d+\.pixiv\.net\/img\d+/, "http://*.pixiv.net/img*")
   end
 
   def parse_prefix
@@ -94,10 +72,6 @@ class ArtistUrl < ApplicationRecord
   end
 
   def normalize
-    if !Sources::Site.new(normalized_url).normalized_for_artist_finder?
-      self.normalized_url = self.class.normalize(url)
-    end
-  rescue Sources::Site::NoStrategyError
     self.normalized_url = self.class.normalize(url)
   end
 

@@ -205,6 +205,11 @@ class ArtistTest < ActiveSupport::TestCase
       assert_equal(["minko"], Artist.find_all_by_url("http://minko.com/x/test.jpg").map(&:name))
     end
 
+    should "be case-insensitive to domains when finding matches by url" do
+      a1 = FactoryBot.create(:artist, name: "bkub", url_string: "http://BKUB.example.com")
+      assert_artist_found(a1.name, "http://bkub.example.com")
+    end
+
     should "not find duplicates" do
       FactoryBot.create(:artist, :name => "warhol", :url_string => "http://warhol.com/x/a/image.jpg\nhttp://warhol.com/x/b/image.jpg")
       assert_equal(["warhol"], Artist.find_all_by_url("http://warhol.com/x/test.jpg").map(&:name))
@@ -228,10 +233,8 @@ class ArtistTest < ActiveSupport::TestCase
       end
 
       should "find the correct artist for page URLs" do
-        assert_artist_found("artgerm", "http://artgerm.deviantart.com/art/Peachy-Princess-Ver-2-457220550")
-
-        assert_artist_found("trixia", "http://trixdraws.deviantart.com/art/My-Queen-426745289")
-        assert_artist_found("trixia", "http://trixdraws.deviantart.com/gallery/#/d722mrt")
+        assert_artist_found("artgerm", "http://www.deviantart.com/artgerm/art/Peachy-Princess-Ver-2-457220550")
+        assert_artist_found("trixia", "http://www.deviantart.com/trixdraws/art/My-Queen-426745289")
       end
 
       should "find the correct artist for image URLs" do
@@ -242,11 +245,6 @@ class ArtistTest < ActiveSupport::TestCase
         assert_artist_found("trixia", "http://fc01.deviantart.net/fs71/i/2014/050/d/e/my_queen_by_trixdraws-d722mrt.jpg")
         assert_artist_found("trixia", "http://th01.deviantart.net/fs71/200H/i/2014/050/d/e/my_queen_by_trixdraws-d722mrt.jpg")
         assert_artist_found("trixia", "http://th09.deviantart.net/fs71/PRE/i/2014/050/d/e/my_queen_by_trixdraws-d722mrt.jpg")
-      end
-
-      should "return nothing for unknown deviantart artists" do
-        assert_artist_not_found("http://guweiz.deviantart.com/art/Battleship-551905391")
-        assert_artist_not_found("https://orig00.deviantart.net/7585/f/2015/219/a/5/battleship__by_guweiz-d94l8xb.png")
       end
     end
 
@@ -286,15 +284,8 @@ class ArtistTest < ActiveSupport::TestCase
         assert_artist_found("bkub",  "http://www.pixiv.net/i/46239857")
       end
 
-      should "find nothing for malformed URLs" do
-        assert_artist_not_found("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=herpderp")
-        assert_artist_not_found("http://www.pixiv.net/wharrgarbl")
-      end
-
       should "find nothing for bad IDs" do
-        assert_raises(PixivApiClient::BadIDError) do
-          assert_artist_not_found("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=32049358")
-        end
+        assert_artist_not_found("http://www.pixiv.net/member_illust.php?mode=medium&illust_id=32049358")
       end
     end
 

@@ -35,6 +35,11 @@ class ArtistUrlTest < ActiveSupport::TestCase
       assert_equal("http://google.com/", url.normalized_url)
     end
 
+    should "normalise domains to lowercase" do
+      url = FactoryBot.create(:artist_url, url: "https://ArtistName.example.com")
+      assert_equal("http://artistname.example.com/", url.normalized_url)
+    end
+
     context "normalize twitter profile urls" do
       setup do
         @url = FactoryBot.create(:artist_url, :url => "https://twitter.com/BLAH")
@@ -42,6 +47,56 @@ class ArtistUrlTest < ActiveSupport::TestCase
 
       should "downcase the url" do
         assert_equal("http://twitter.com/blah/", @url.normalized_url)
+      end
+    end
+
+    context "artstation urls" do
+      setup do
+        @urls = [
+          FactoryBot.create(:artist_url, url: "https://www.artstation.com/koyorin"),
+          FactoryBot.create(:artist_url, url: "https://www.artstation.com/artist/koyorin"),
+          FactoryBot.create(:artist_url, url: "https://koyorin.artstation.com"),
+          FactoryBot.create(:artist_url, url: "https://www.artstation.com/artwork/04XA4")
+        ]
+      end
+
+      should "normalize" do
+        assert_equal("http://www.artstation.com/koyorin/", @urls[0].normalized_url)
+        assert_equal("http://www.artstation.com/koyorin/", @urls[1].normalized_url)
+        assert_equal("http://www.artstation.com/koyorin/", @urls[2].normalized_url)
+        assert_equal("http://www.artstation.com/jeyrain/", @urls[3].normalized_url)
+      end
+    end
+
+    context "deviantart urls" do
+      setup do
+        @urls = [
+          FactoryBot.create(:artist_url, url: "https://www.deviantart.com/aeror404/art/Holiday-Elincia-424551484"),
+          FactoryBot.create(:artist_url, url: "http://noizave.deviantart.com/art/test-post-please-ignore-685436408"),
+          FactoryBot.create(:artist_url, url: "https://www.deviantart.com/noizave")
+        ]
+      end
+
+      should "normalize" do
+        assert_equal("http://www.deviantart.com/aeror404/", @urls[0].normalized_url)
+        assert_equal("http://www.deviantart.com/noizave/", @urls[1].normalized_url)
+        assert_equal("http://www.deviantart.com/noizave/", @urls[2].normalized_url)
+      end
+    end
+
+    context "nicoseiga urls" do
+      setup do
+        @urls = [
+          FactoryBot.create(:artist_url, url: "http://seiga.nicovideo.jp/user/illust/7017777"),
+          FactoryBot.create(:artist_url, url: "http://lohas.nicoseiga.jp/o/910aecf08e542285862954017f8a33a8c32a8aec/1433298801/4937663"),
+          FactoryBot.create(:artist_url, url: "http://seiga.nicovideo.jp/seiga/im4937663")
+        ]
+      end
+
+      should "normalize" do
+        assert_equal("http://seiga.nicovideo.jp/user/illust/7017777/", @urls[0].normalized_url)
+        assert_equal("http://seiga.nicovideo.jp/user/illust/7017777/", @urls[1].normalized_url)
+        assert_equal("http://seiga.nicovideo.jp/user/illust/7017777/", @urls[2].normalized_url)
       end
     end
 
@@ -55,9 +110,14 @@ class ArtistUrlTest < ActiveSupport::TestCase
       assert_equal("http://blog.fc2.com/monet/", url.normalized_url)
     end
 
+    should "normalize deviant art artist urls" do
+      url = FactoryBot.create(:artist_url, :url => "https://www.deviantart.com/aeror404/art/Holiday-Elincia-424551484")
+      assert_equal("http://www.deviantart.com/aeror404/", url.normalized_url)      
+    end
+
     should "normalize nico seiga artist urls" do
-      url = FactoryBot.create(:artist_url, :url => "http://seiga.nicovideo.jp/user/illust/1826959")
-      assert_equal("http://seiga.nicovideo.jp/user/illust/1826959/", url.normalized_url)
+      url = FactoryBot.create(:artist_url, :url => "http://seiga.nicovideo.jp/user/illust/7017777")
+      assert_equal("http://seiga.nicovideo.jp/user/illust/7017777/", url.normalized_url)
 
       url = FactoryBot.create(:artist_url, :url => "http://seiga.nicovideo.jp/seiga/im4937663")
       assert_equal("http://seiga.nicovideo.jp/user/illust/7017777/", url.normalized_url)
@@ -74,10 +134,22 @@ class ArtistUrlTest < ActiveSupport::TestCase
       assert_equal("http://www.pixiv.net/member.php?id=339253/", url.normalized_url)
     end
 
+    should "normalize pixiv stacc urls" do
+      url = FactoryBot.create(:artist_url, :url => "https://www.pixiv.net/stacc/evazion")
+      assert_equal("https://www.pixiv.net/stacc/evazion", url.url)
+      assert_equal("http://www.pixiv.net/stacc/evazion/", url.normalized_url)
+    end
+
+    should "normalize pixiv fanbox account urls" do
+      url = FactoryBot.create(:artist_url, :url => "http://www.pixiv.net/fanbox/creator/3113804")
+      assert_equal("http://www.pixiv.net/fanbox/creator/3113804", url.url)
+      assert_equal("http://www.pixiv.net/fanbox/creator/3113804/", url.normalized_url)
+    end
+
     should "normalize twitter urls" do
-      url = FactoryBot.create(:artist_url, :url => "https://twitter.com/MONET/status/12345")
-      assert_equal("https://twitter.com/MONET/status/12345", url.url)
-      assert_equal("http://twitter.com/monet/status/12345/", url.normalized_url)
+      url = FactoryBot.create(:artist_url, :url => "https://twitter.com/aoimanabu/status/892370963630743552")
+      assert_equal("https://twitter.com/aoimanabu/status/892370963630743552", url.url)
+      assert_equal("http://twitter.com/aoimanabu/", url.normalized_url)
     end
   end
 end

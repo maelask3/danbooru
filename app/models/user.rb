@@ -108,8 +108,8 @@ class User < ApplicationRecord
   has_many :forum_posts, -> {order("forum_posts.created_at, forum_posts.id")}, :foreign_key => "creator_id"
   has_many :user_name_change_requests, -> {visible.order("user_name_change_requests.created_at desc")}
   has_many :favorite_groups, -> {order(name: :asc)}, foreign_key: :creator_id
+  has_many :favorites, ->(rec) {where("user_id % 100 = #{rec.id % 100} and user_id = #{rec.id}").order("id desc")}
   belongs_to :inviter, class_name: "User", optional: true
-  after_update :create_mod_action
   accepts_nested_attributes_for :dmail_filter
 
   module BanMethods
@@ -131,22 +131,6 @@ class User < ApplicationRecord
 
     def ban_expired?
       is_banned? && recent_ban.try(:expired?)
-    end
-  end
-
-  module InvitationMethods
-    def invite!(level, can_upload_free)
-      if can_upload_free
-        self.can_upload_free = true
-      else
-        self.can_upload_free = false
-      end
-
-      if level.to_i <= Levels::BUILDER
-        self.level = level
-        self.inviter_id = CurrentUser.id
-        save
-      end
     end
   end
 
@@ -297,20 +281,6 @@ class User < ApplicationRecord
     end
   end
 
-  module FavoriteMethods
-    def favorites
-      Favorite.where("user_id % 100 = #{id % 100} and user_id = #{id}").order("id desc")
-    end
-
-    def add_favorite!(post)
-      Favorite.add(post: post, user: self)
-    end
-
-    def remove_favorite!(post)
-      Favorite.remove(post: post, user: self)
-    end
-  end
-
   module LevelMethods
     extend ActiveSupport::Concern
 
@@ -384,10 +354,6 @@ class User < ApplicationRecord
       level_string.downcase.to_sym
     end
 
-    def level_string_before_last_save
-      level_string(level_before_last_save)
-    end
-
     def level_string_was
       level_string(level_was)
     end
@@ -438,12 +404,6 @@ class User < ApplicationRecord
 
     def is_approver?
       can_approve_posts?
-    end
-
-    def create_mod_action
-      if saved_change_to_level?
-        ModAction.log(%{"#{name}":/users/#{id} level changed #{level_string_before_last_save} -> #{level_string}},:user_level)
-      end
     end
 
     def set_per_page
@@ -502,6 +462,8 @@ class User < ApplicationRecord
   end
 
   module LimitMethods
+    extend Memoist
+
     def max_saved_searches
       if is_platinum?
         1_000
@@ -567,7 +529,7 @@ class User < ApplicationRecord
     end
 
     def upload_limit
-      @upload_limit ||= [max_upload_limit - used_upload_slots, 0].max
+      [max_upload_limit - used_upload_slots, 0].max
     end
 
     def used_upload_slots
@@ -575,6 +537,7 @@ class User < ApplicationRecord
       uploaded_comic_count = Post.for_user(id).tag_match("comic").where("created_at >= ?", 23.hours.ago).count / 3
       uploaded_count - uploaded_comic_count
     end
+    memoize :used_upload_slots
 
     def max_upload_limit
       [(base_upload_limit * upload_limit_multiplier).ceil, 10].max
@@ -587,6 +550,7 @@ class User < ApplicationRecord
     def adjusted_deletion_confidence
       [deletion_confidence(60), 15].min
     end
+    memoize :adjusted_deletion_confidence
 
     def base_upload_limit
       if created_at >= 1.month.ago
@@ -618,7 +582,7 @@ class User < ApplicationRecord
 
     def favorite_limit
       if is_platinum?
-        nil
+        Float::INFINITY
       elsif is_gold?
         20_000
       else
@@ -917,13 +881,11 @@ class User < ApplicationRecord
   include NameMethods
   include PasswordMethods
   include AuthenticationMethods
-  include FavoriteMethods
   include LevelMethods
   include EmailMethods
   include BlacklistMethods
   include ForumMethods
   include LimitMethods
-  include InvitationMethods
   include ApiMethods
   include CountMethods
   extend SearchMethods

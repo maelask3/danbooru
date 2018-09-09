@@ -3107,7 +3107,17 @@ CREATE TABLE public.uploads (
     created_at timestamp without time zone,
     updated_at timestamp without time zone,
     server text,
-    parent_id integer
+    parent_id integer,
+    md5 character varying,
+    file_ext character varying,
+    file_size integer,
+    image_width integer,
+    image_height integer,
+    artist_commentary_desc text,
+    artist_commentary_title text,
+    include_artist_commentary boolean,
+    context text,
+    referer_url text
 );
 
 
@@ -7133,6 +7143,20 @@ CREATE UNIQUE INDEX index_token_buckets_on_user_id ON public.token_buckets USING
 
 
 --
+-- Name: index_uploads_on_referer_url; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_uploads_on_referer_url ON public.uploads USING btree (referer_url);
+
+
+--
+-- Name: index_uploads_on_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_uploads_on_source ON public.uploads USING btree (source);
+
+
+--
 -- Name: index_uploads_on_uploader_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7496,6 +7520,10 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20180403231351'),
 ('20180413224239'),
 ('20180425194016'),
-('20180516222413');
+('20180516222413'),
+('20180517190048'),
+('20180518175154'),
+('20180804203201'),
+('20180816230604');
 
 

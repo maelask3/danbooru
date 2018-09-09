@@ -1,0 +1,77 @@
+div#c-uploads {
+  div#a-new {
+    .artist-commentary {
+      margin-top: 1em;
+      margin-left: 1em;
+    }
+
+    div#upload-guide-notice {
+      margin-bottom: 2em;
+    }
+
+    ul#upload-image-metadata, ul#links {
+      margin-bottom: 1em;
+    }
+
+    div#related-posts-by-source, div#iqdb-similar {
+      display: inline-block;
+
+      .hint {
+        white-space: nowrap;
+        max-width: 100%;
+      }
+    }
+
+    label[for="upload_as_pending"] {
+      display: inline;
+    }
+
+    fieldset.ratings {
+      label {
+        display: inline;
+      }
+    }
+
+    textarea {
+      margin-bottom: 0.25em;
+    }
+
+    .hint {
+      display: block;
+    }
+
+    div.field_with_errors {
+      display: inline;
+    }
+  }
+
+  div#a-index {
+    .info {
+      margin-right: 1.5em;
+    }
+  }
+
+  div.upload-preview {
+    display: inline-block;
+
+    > a {
+      width: 154px;
+      height: 154px;
+      margin: 0 10px 10px 0;
+      display: inline-block;
+
+      img {
+        margin: auto;
+        border: 2px solid transparent;
+
+        max-width: 154px;
+        max-height: 154px;
+      }
+    }
+
+    .caption-top {
+      font-size: 0.8em;
+      margin-bottom: 0;
+    }
+  }
+}

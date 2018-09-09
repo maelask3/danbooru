@@ -36,13 +36,6 @@ class ApplicationController < ActionController::Base
     response.headers["Access-Control-Allow-Origin"] = "*"
   end
 
-  def require_reportbooru_key
-    unless params[:key] == Danbooru.config.reportbooru_key
-      render(text: "forbidden", status: 403)
-      return false
-    end
-  end
-  
   def bad_db_connection
     respond_to do |format|
       format.json do
@@ -176,7 +169,7 @@ class ApplicationController < ActionController::Base
   def reset_current_user
     CurrentUser.user = nil
     CurrentUser.ip_addr = nil
-    CurrentUser.root_url = root_url
+    CurrentUser.root_url = root_url.chomp("/")
   end
 
   def set_started_at_session
