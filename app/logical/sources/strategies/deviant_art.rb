@@ -87,8 +87,13 @@ module Sources
       end
 
       def page_url
-        return "" if api_deviation.blank?
-        api_deviation[:url]
+        if api_deviation.present?
+          api_deviation[:url]
+        elsif api_url.present?
+          api_url
+        else
+          ""
+        end
       end
 
       def profile_url
@@ -198,15 +203,19 @@ module Sources
         self.class.artist_name_from_url(url) || self.class.artist_name_from_url(referer_url)
       end
 
-      def page
+      def api_url
         return nil if deviation_id.blank?
-        deviation_url = "https://www.deviantart.com/deviation/#{deviation_id}"
+        "https://www.deviantart.com/deviation/#{deviation_id}"
+      end
+
+      def page
+        return nil if api_url.blank?
 
         options = Danbooru.config.httparty_options.deep_merge(
           format: :plain, 
           headers: { "Accept-Encoding" => "gzip" }
         )
-        resp = HTTParty.get(deviation_url, **options)
+        resp = HTTParty.get(api_url, **options)
 
         if resp.success?
           body = Zlib.gunzip(resp.body)

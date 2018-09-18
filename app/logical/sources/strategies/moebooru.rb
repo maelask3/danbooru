@@ -1,26 +1,34 @@
 module Sources
   module Strategies
     class Moebooru < Base
-      DOMAINS = /(?:[^.]+\.)?yande\.re|konachan\.com/
+      BASE_URL = %r!\Ahttps?://(?:[^.]+\.)?(?<domain>yande\.re|konachan\.com)!i
 
       def self.match?(*urls)
-        urls.compact.any? { |x| x.match?(DOMAINS) }
+        urls.compact.any? { |x| x.match?(BASE_URL) }
       end
 
       def site_name
-        URI.parse(url).host
+        urls.map { |url| url[BASE_URL, :domain] }.compact.first
       end
 
       def image_url
-        if url =~ %r{\A(https?://(?:#{DOMAINS}))/jpeg/([a-f0-9]+(?:/.*)?)\.jpg\Z}
-          return $1 + "/image/" + $2 + ".png"
+        if url =~ %r{\A(?<base>#{BASE_URL})/jpeg/(?<md5>\h+(?:/.*)?)\.jpg\Z}
+          return $~[:base] + "/image/" + $~[:md5] + ".png"
         end
 
         return url
       end
 
+      def image_urls
+        [image_url]
+      end
+
       def page_url
         return url
+      end
+
+      def canonical_url
+        image_url
       end
 
       def profile_url

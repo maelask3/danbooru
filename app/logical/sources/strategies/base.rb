@@ -22,6 +22,12 @@ module Sources
         false
       end
 
+      # Should return true if all prerequisites for using the strategy are met.
+      # Return false if the strategy requires api keys that have not been configured.
+      def self.enabled?
+        true
+      end
+
       # * <tt>url</tt> - Should point to a resource suitable for 
       #   downloading. This may sometimes point to the binary file. 
       #   It may also point to the artist's profile page, in cases
@@ -37,8 +43,14 @@ module Sources
         @referer_url = referer_url
       end
 
+      def urls
+        [url, referer_url].select(&:present?)
+      end
+
       def site_name
-        raise NotImplementedError
+        Addressable::URI.heuristic_parse(url).host
+      rescue Addressable::URI::InvalidURIError => e
+        nil
       end
 
       # Whatever <tt>url</tt> is, this method should return the direct links 
@@ -51,6 +63,16 @@ module Sources
 
       def image_url
         image_urls.first
+      end
+
+      # A smaller representation of the image that's suitable for
+      # displaying previews.
+      def preview_urls
+        image_urls
+      end
+
+      def preview_url
+        preview_urls.first
       end
 
       # Whatever <tt>url</tt> is, this method should return a link to the HTML
@@ -116,11 +138,13 @@ module Sources
       # Sources::Strategies.find("http://dic.pixiv.net/a/THUNDERproject").normalizable_for_artist_finder?
       # => false
       def normalizable_for_artist_finder?
-        false
+        normalize_for_artist_finder.present?
       end
 
+      # The url to use for artist finding purposes. This will be stored in the
+      # artist entry. Normally this will be the profile url.
       def normalize_for_artist_finder
-        profile_url || url
+        profile_url.presence || url
       end
 
       # A unique identifier for the artist. This is used for artist creation.
@@ -129,8 +153,7 @@ module Sources
       end
 
       def artists
-        url = profile_url.presence || image_url.presence
-        Artist.find_artists(url)
+        Artist.url_matches(normalize_for_artist_finder)
       end
 
       def file_url

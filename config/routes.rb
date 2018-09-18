@@ -79,10 +79,9 @@ Rails.application.routes.draw do
     collection do
       get :show_or_new
       get :banned
-      get :finder
     end
   end
-  resources :artist_urls, only: [:update]
+  resources :artist_urls, only: [:index, :update]
   resources :artist_versions, :only => [:index] do
     collection do
       get :search

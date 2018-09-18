@@ -42,11 +42,15 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "work on an ugoira url" do
-          file = subject.download_for_upload(@upload)
+          begin
+            file = subject.download_for_upload(@upload)
 
-          assert_operator(File.size(file.path), :>, 0)
+            assert_operator(File.size(file.path), :>, 0)
 
-          file.close
+            file.close
+          rescue Net::OpenTimeout
+            skip "network problems"
+          end
         end
       end
 
@@ -60,12 +64,16 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "work on an ugoira url" do
-          file = subject.download_for_upload(@upload)
+          begin
+            file = subject.download_for_upload(@upload)
 
-          assert_not_nil(@upload.context["ugoira"])
-          assert_operator(File.size(file.path), :>, 0)
+            assert_not_nil(@upload.context["ugoira"])
+            assert_operator(File.size(file.path), :>, 0)
 
-          file.close
+            file.close
+          rescue Net::OpenTimeout
+            skip "network failure"
+          end
         end
       end
     end
@@ -400,8 +408,12 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "download the file" do
-          @service = subject.new(source: @source, referer_url: @ref)
-          @upload = @service.start!
+          begin
+            @service = subject.new(source: @source, referer_url: @ref)
+            @upload = @service.start!
+          rescue Net::OpenTimeout
+            skip "network failure"
+          end
           assert_equal("preprocessed", @upload.status)
           assert_equal(294591, @upload.file_size)
           assert_equal("jpg", @upload.file_ext)
@@ -418,7 +430,11 @@ class UploadServiceTest < ActiveSupport::TestCase
 
         should "download the file" do
           @service = subject.new(source: @source)
-          @upload = @service.start!
+          begin
+            @upload = @service.start!
+          rescue Net::OpenTimeout
+            skip "network problems"
+          end
           assert_equal("preprocessed", @upload.status)
           assert_equal(2804, @upload.file_size)
           assert_equal("zip", @upload.file_ext)
@@ -435,7 +451,11 @@ class UploadServiceTest < ActiveSupport::TestCase
 
         should "download the file" do
           @service = subject.new(source: @source)
-          @upload = @service.start!
+          begin
+            @upload = @service.start!
+          rescue Net::OpenTimeout
+            skip "network problems"
+          end
           assert_equal("preprocessed", @upload.status)
           assert_equal(181309, @upload.file_size)
           assert_equal("jpg", @upload.file_ext)
@@ -477,6 +497,18 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
       end
 
+      context "for an invalid content type" do
+        setup do
+          @source = "http://www.example.com"
+          @service = subject.new(source: @source)
+        end
+
+        should "fail" do
+          upload = @service.start!
+          upload.reload
+          assert_match(/error:/, upload.status)
+        end
+      end
     end
 
     context "#finish!" do
@@ -1075,8 +1107,12 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       should "record the canonical source" do
-        post = subject.new({}).create_post_from_upload(@upload)
-        assert_equal(@source, post.source)
+        begin
+          post = subject.new({}).create_post_from_upload(@upload)
+          assert_equal(@source, post.source)
+        rescue Net::OpenTimeout
+          skip "network failure"
+        end
       end
     end
 
@@ -1109,7 +1145,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
     context "for nijie" do
       should "record the canonical source" do
-        page_url = "https://nijie.info/view.php?id=213043"
+        page_url = "https://nijie.info/view.php?id=728995"
         image_url = "https://pic03.nijie.info/nijie_picture/728995_20170505014820_0.jpg"
         upload = FactoryBot.create(:jpg_upload, file_size: 1000, md5: "12345", file_ext: "jpg", image_width: 100, image_height: 100, source: image_url, referer_url: page_url)
 

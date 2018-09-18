@@ -1,6 +1,7 @@
 module Sources
   module Strategies
     class Nijie < Base
+      PROFILE = %r!\Ahttps?://nijie.info/members\.php\?id=(?<member_id>\d+)\z!i
       PICTURE = %r{pic\d+\.nijie.info/nijie_picture/}
       PAGE = %r{\Ahttps?://nijie\.info/view\.php.+id=\d+}
       DIFF = %r!\Ahttps?://pic\d+\.nijie\.info/__rs_l120x120/nijie_picture/diff/main/[0-9_]+\.\w+\z!i
@@ -40,12 +41,18 @@ module Sources
           if x =~ %r!https?://nijie\.info/view_popup\.php.+id=(\d+)!
             return "https://nijie.info/view.php?id=#{$1}"
           end
+
+          if x =~ %r!\Ahttps?://pic\d+\.nijie\.info/nijie_picture/(\d+)!
+            return "https://nijie.info/view.php?id=#{$1}"
+          end
         end
 
         return super
       end
 
       def profile_url
+        return url if url =~ PROFILE
+
         links = page.search("a.name")
 
         if links.any?
