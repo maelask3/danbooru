@@ -1,12 +1,12 @@
 module PostSets
   class Post < PostSets::Base
-    attr_reader :tag_array, :page, :per_page, :raw, :random, :post_count, :format, :read_only
+    MAX_PER_PAGE = 200
+    attr_reader :tag_array, :page, :raw, :random, :post_count, :format, :read_only
 
     def initialize(tags, page = 1, per_page = nil, options = {})
       @tag_array = Tag.scan_query(tags)
       @page = page
-      @per_page = (per_page || CurrentUser.per_page).to_i
-      @per_page = 200 if @per_page > 200
+      @per_page = per_page
       @raw = options[:raw].present?
       @random = options[:random].present?
       @format = options[:format] || "html"
@@ -22,11 +22,15 @@ module PostSets
     end
 
     def unordered_tag_array
-      tag_array.reject{|tag| tag =~ /\Aorder:\S+/}
+      tag_array.reject {|tag| tag =~ /\Aorder:/i }
     end
 
     def has_wiki?
       is_single_tag? && ::WikiPage.titled(tag_string).exists? && wiki_page.visible?
+    end
+
+    def has_wiki_text?
+      has_wiki? && wiki_page.body.present?
     end
 
     def has_blank_wiki?
@@ -55,7 +59,7 @@ module PostSets
     end
 
     def pool_name
-      tag_string.match(/^(?:ord)?pool:(\S+)$/i).try(:[], 1)
+      @pool_name ||= Tag.has_metatag?(tag_array, :ordpool, :pool)
     end
 
     def has_pool?
@@ -67,7 +71,7 @@ module PostSets
     end
 
     def favgroup_name
-      tag_string.match(/^favgroup:(\S+)$/i).try(:[], 1)
+      @favgroup_name ||= Tag.has_metatag?(tag_array, :favgroup)
     end
 
     def has_favgroup?
@@ -102,6 +106,14 @@ module PostSets
       posts.select { |p| p.safeblocked? && !p.levelblocked? && !p.banblocked? }
     end
 
+    def per_page
+      (@per_page || Tag.has_metatag?(tag_array, :limit) || CurrentUser.user.per_page).to_i.clamp(0, MAX_PER_PAGE)
+    end
+
+    def is_random?
+      random || Tag.has_metatag?(tag_array, :order) == "random"
+    end
+
     def use_sequential_paginator?
       unknown_post_count? && !CurrentUser.is_gold?
     end
@@ -129,7 +141,7 @@ module PostSets
       @posts ||= begin
         @post_count = get_post_count()
 
-        if random
+        if is_random?
           temp = get_random_posts()
         elsif raw
           temp = ::Post.raw_tag_match(tag_string).order("posts.id DESC").where("true /* PostSets::Post#posts:1 */").paginate(page, :count => post_count, :limit => per_page)
@@ -175,6 +187,11 @@ module PostSets
 
     def presenter
       @presenter ||= ::PostSetPresenters::Post.new(self)
+    end
+
+    def best_post
+      # be smarter about this in the future
+      posts.max {|a, b| a.fav_count <=> b.fav_count}
     end
   end
 end

@@ -10,9 +10,7 @@ class PostsController < ApplicationController
         format.html { redirect_to(@post) }
       end
     else
-      limit = params[:limit] || (params[:tags] =~ /(?:^|\s)limit:(\d+)(?:$|\s)/ && $1) || CurrentUser.user.per_page
-      @random = params[:random] || params[:tags] =~ /(?:^|\s)order:random(?:$|\s)/
-      @post_set = PostSets::Post.new(tag_query, params[:page], limit, raw: params[:raw], random: @random, format: params[:format], read_only: params[:ro])
+      @post_set = PostSets::Post.new(tag_query, params[:page], params[:limit], raw: params[:raw], random: params[:random], format: params[:format], read_only: params[:ro])
       @posts = @post_set.posts
       respond_with(@posts) do |format|
         format.atom
@@ -25,9 +23,7 @@ class PostsController < ApplicationController
 
   def show
     @post = Post.find(params[:id])
-    @post_flag = PostFlag.new(:post_id => @post.id)
-    @post_appeal = PostAppeal.new(:post_id => @post.id)
-    
+
     include_deleted = @post.is_deleted? || (@post.parent_id.present? && @post.parent.is_deleted?) || CurrentUser.user.show_deleted_children?
     @parent_post_set = PostSets::PostRelationship.new(@post.parent_id, :include_deleted => include_deleted)
     @children_post_set = PostSets::PostRelationship.new(@post.id, :include_deleted => include_deleted)
@@ -50,7 +46,6 @@ class PostsController < ApplicationController
     @post = Post.find(params[:id])
 
     @post.update(post_params) if @post.visible?
-    save_recent_tags
     respond_with_post_after_update(@post)
   end
 
@@ -98,15 +93,6 @@ private
 
   def tag_query
     params[:tags] || (params[:post] && params[:post][:tags])
-  end
-
-  def save_recent_tags
-    if @post
-      tags = Tag.scan_tags(@post.tag_string)
-      tags = (TagAlias.to_aliased(tags) + Tag.scan_tags(cookies[:recent_tags])).uniq.slice(0, 30)
-      cookies[:recent_tags] = tags.join(" ")
-      cookies[:recent_tags_with_categories] = Tag.categories_for(tags).to_a.flatten.join(" ")
-    end
   end
 
   def respond_with_post_after_update(post)

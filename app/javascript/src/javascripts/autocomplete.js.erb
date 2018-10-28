@@ -8,7 +8,7 @@ Autocomplete.TAG_CATEGORIES = <%= TagCategory.mapping.to_json.html_safe %>;
 
 Autocomplete.TAG_PREFIXES = "-|~|" + Object.keys(Autocomplete.TAG_CATEGORIES).map(category => category + ":").join("|");
 Autocomplete.TAG_PREFIXES_REGEX = new RegExp("^(" + Autocomplete.TAG_PREFIXES + ")(.*)$", "i");
-Autocomplete.METATAGS_REGEX = new RegExp("^(" + Autocomplete.METATAGS + "):(.*)$", "i");
+Autocomplete.METATAGS_REGEX = new RegExp("^(" + Autocomplete.METATAGS.join("|") + "):(.*)$", "i");
 
 Autocomplete.initialize_all = function() {
   if (Utility.meta("enable-auto-complete") === "true") {
@@ -182,7 +182,7 @@ Autocomplete.initialize_artist_autocomplete = function($fields) {
       $.ajax({
         url: "/artists.json",
         data: {
-          "search[name]": req.term + "*",
+          "search[name_like]": req.term.trim().replace(/\s+/g, "_") + "*",
           "search[is_active]": true,
           "search[order]": "post_count",
           "limit": 10,
@@ -308,11 +308,6 @@ Autocomplete.insert_completion = function(input, completion) {
 
   var regexp = new RegExp("(" + Autocomplete.TAG_PREFIXES + ")?\\S+$", "g");
   before_caret_text = before_caret_text.replace(regexp, "$1") + completion + " ";
-
-  if (Utility.meta('current-user-id') === '1') {
-    // is this actually better?
-    after_caret_text = after_caret_text.replace(/^\S+/, "");
-  }
 
   input.value = before_caret_text + after_caret_text;
   input.selectionStart = input.selectionEnd = before_caret_text.length;

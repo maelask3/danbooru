@@ -6,12 +6,17 @@
       <%= render "posts/partials/index/blacklist" %>
 
       <section id="tag-list">
-        <%= @post.presenter.split_tag_list_html(self) %>
+        <%= @post.presenter.split_tag_list_html(current_query: params[:tags], show_extra_links: CurrentUser.user.is_gold?) %>
       </section>
 
       <section id="post-information">
         <h1>Information</h1>
         <%= render "posts/partials/show/information", :post => @post %>
+      </section>
+
+      <section id="post-share">
+        <h1>Share</h1>
+        <%= render "posts/partials/show/share", :post => @post %>
       </section>
 
       <section id="post-options">
@@ -49,10 +54,15 @@
       </section>
 
       <% if CurrentUser.is_member? %>
-        <div class="fav-buttons">
-          <%= button_to "Favorite", favorites_path(post_id: @post.id), remote: true, method: :post, form: {id: "add-fav-button", style: ("display: none;" if @post.is_favorited?)}, class: "ui-button ui-widget ui-corner-all gradient", data: {disable_with: "Favoriting..."} %>
-          <%= button_to "Unfavorite", favorite_path(@post), remote: true, method: :delete, form: {id: "remove-fav-button", style: ("display: none;" if !@post.is_favorited?)}, class: "ui-button ui-widget ui-corner-all gradient", data: {disable_with: "Unfavoriting..."} %>
-        </div>
+        <%= content_tag(:div, class: "fav-buttons fav-buttons-#{@post.is_favorited?}") do %>
+          <%= form_tag(favorites_path(post_id: @post.id), method: "post", id: "add-fav-button", "data-remote": true) do %>
+            <%= button_tag tag.i(class: "far fa-heart"), class: "ui-button ui-widget ui-corner-all gradient", "data-disable-with": "..." %>
+          <% end %>
+
+          <%= form_tag(favorite_path(@post.id), method: "delete", id: "remove-fav-button", "data-remote": true) do %>
+            <%= button_tag tag.i(class: "fas fa-heart"), class: "ui-button ui-widget ui-corner-all gradient", "data-disable-with": "..." %>
+          <% end %>
+        <% end %>
       <% end %>
 
       <section id="mark-as-translated-section" style="display: none;">
@@ -98,8 +108,6 @@
         <% if CurrentUser.is_member? && @post.visible? %>
           <li><a href="#edit" id="post-edit-link" data-shortcut="e">Edit</a></li>
         <% end %>
-
-        <li><a href="#share">Share</a></li>
       </menu>
 
       <% if RecommenderService.available_for_post?(@post) %>
@@ -128,36 +136,22 @@
           <%= render "posts/partials/show/edit", :post => @post %>
         </section>
       <% end %>
-
-      <section id="share" style="display: none;">
-        <%= render "posts/partials/show/share", :post => @post %>
-      </section>
     </section>
   </div>
 
-  <div id="flag-dialog" class="prose" title="Flag post" style="display: none;">
-    <%= render "post_flags/new", post_flag: @post.flags.new %>
-  </div>
+  <% if CurrentUser.is_member? %>
+    <div id="add-to-pool-dialog" title="Add to pool" style="display: none;">
+      <%= render "pool_elements/new" %>
+    </div>
 
-  <div id="appeal-dialog" class="prose" title="Appeal post" style="display: none;">
-    <%= render "post_appeals/new", post_appeal: @post.appeals.new %>
-  </div>
+    <div id="add-commentary-dialog" title="Add artist commentary" style="display: none;">
+      <%= render "artist_commentaries/form", :post => @post %>
+    </div>
 
-  <div id="replace-image-dialog" class="prose" title="Replace image" style="display: none;">
-    <%= render "post_replacements/new", post_replacement: @post.replacements.new %>
-  </div>
-
-  <div id="add-to-pool-dialog" title="Add to pool" style="display: none;">
-    <%= render "pool_elements/new" %>
-  </div>
-
-  <div id="add-commentary-dialog" title="Add artist commentary" style="display: none;">
-    <%= render "artist_commentaries/form", :post => @post %>
-  </div>
-
-  <div id="add-to-favgroup-dialog" title="Add to favorite group" style="display: none;">
-    <%= render "favorite_groups/add_to_favgroup_dialog", :post => @post %>
-  </div>
+    <div id="add-to-favgroup-dialog" title="Add to favorite group" style="display: none;">
+      <%= render "favorite_groups/add_to_favgroup_dialog", :post => @post %>
+    </div>
+  <% end %>
 </div>
 
 <%= post_view_count_js %>
@@ -167,31 +161,40 @@
 <% end %>
 
 <% content_for(:html_header) do %>
-  <meta name="description" content="<%= @post.presenter.humanized_tag_string %>">
+  <%= tag.meta name: "description", content: "View this #{@post.image_width}x#{@post.image_height} #{number_to_human_size(@post.file_size)} image" %>
   <meta name="post-id" content="<%= @post.id %>">
   <meta name="post-has-embedded-notes" content="<%= @post.has_embedded_notes? %>">
   <meta name="always-resize-images" content="<%= CurrentUser.user.always_resize_images? %>">
-  <meta property="og:title" content="<%= @post.presenter.humanized_essential_tag_string %> - <%= Danbooru.config.app_name %>">
+  <%= tag.meta name: "og:title", content: "#{@post.presenter.humanized_essential_tag_string} - #{Danbooru.config.app_name}" %>
 
   <% if @post.visible? %>
-    <meta property="og:image" content="<%= @post.open_graph_image_url %>">
+    <%= tag.meta name: "og:image", content: @post.open_graph_image_url %>
   <% end %>
 
   <% if Danbooru.config.enable_post_search_counts %>
     <meta name="report-server" content="<%= Danbooru.config.reportbooru_server %>">
   <% end %>
 
+  <%= tag.meta name: "canonical", content: post_url(@post, host: Danbooru.config.hostname, protocol: "https") %>
+
   <%# Twitter properties %>
   <% if @post.twitter_card_supported? %>
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:site" content="<%= Danbooru.config.twitter_site %>">
-    <meta name="twitter:title" content="<%= @post.presenter.humanized_essential_tag_string %> - <%= Danbooru.config.app_name %>">
-    <meta name="twitter:description" content="<%= @post.presenter.humanized_tag_string %> - <%= Danbooru.config.app_name %>">
+    <%= tag.meta name: "twitter:site", content: Danbooru.config.twitter_site %>
+    <%= tag.meta name: "twitter:title", content: "#{@post.presenter.humanized_essential_tag_string} - #{Danbooru.config.app_name}" %>
+    <%= tag.meta name: "twitter:description", content: "View this #{@post.image_width}x#{@post.image_height} #{number_to_human_size(@post.file_size)} image" %>
 
     <% if @post.visible? %>
-      <meta name="twitter:image" content="<%= @post.open_graph_image_url %>">
+      <%= tag.meta name: "twitter:image", content: @post.open_graph_image_url %>
     <% end %>
   <% end %>
+
+  <% if @post.rating == "e" %>
+    <meta name="rating" content="adult">
+  <% end %>
+
+  <%= tag.meta name: "og:type", content: "website" %>
+  <%= tag.meta name: "og:site", content: Danbooru.config.app_name %>
 
   <%= auto_discovery_link_tag(:atom, comments_url(:atom, search: { post_id: @post.id }), title: "Comments for post ##{@post.id}") %>
 <% end %>

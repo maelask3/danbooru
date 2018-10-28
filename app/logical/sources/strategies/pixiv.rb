@@ -26,6 +26,10 @@ module Sources
       end
 
       def self.to_dtext(text)
+        if text.nil?
+          return nil
+        end
+        
         text = text.gsub(%r!https?://www\.pixiv\.net/member_illust\.php\?mode=medium&illust_id=([0-9]+)!i) do |match|
           pixiv_id = $1
           %(pixiv ##{pixiv_id} "»":[/posts?tags=pixiv:#{pixiv_id}])
@@ -176,10 +180,13 @@ module Sources
     public
 
       def image_urls_sub
+        if url =~ FANBOX_IMAGE
+          return [url]
+        end
+
         # there's too much normalization bullshit we have to deal with
         # raw urls, so just fetch the canonical url from the api every
         # time.
-
         if manga_page.present?
           return [metadata.pages[manga_page]]
         end

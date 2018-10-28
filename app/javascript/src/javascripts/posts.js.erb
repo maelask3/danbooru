@@ -1,8 +1,5 @@
-/* global addthis */
-
 import Utility from './utility'
 import Hammer from 'hammerjs'
-import RelatedTag from './related_tag.js.erb'
 import Cookie from './cookie'
 import Note from './notes'
 import SavedSearch from './saved_searches'
@@ -31,7 +28,6 @@ Post.initialize_all = function() {
     this.initialize_post_image_resize_links();
     this.initialize_post_image_resize_to_window_link();
     this.initialize_similar();
-    this.initialize_replace_image_dialog();
     this.initialize_gestures();
 
     if ((Utility.meta("always-resize-images") === "true") || (Utility.meta("viewport") && (window.screen.width <= 660))) {
@@ -86,11 +82,6 @@ Post.initialize_edit_dialog = function() {
     Post.open_edit_dialog();
     e.preventDefault();
   });
-
-  $("#toggle-related-tags-link").on("click.danbooru", function(e) {
-    RelatedTag.toggle();
-    e.preventDefault();
-  });
 }
 
 Post.open_edit_dialog = function() {
@@ -98,18 +89,16 @@ Post.open_edit_dialog = function() {
     return;
   }
 
+  $(document).trigger("danbooru:open-post-edit-dialog");
+
   $("#edit").show();
   $("#comments").hide();
-  $("#share").hide();
   $("#post-sections li").removeClass("active");
   $("#post-edit-link").parent("li").addClass("active");
-  $("#related-tags-container").show();
 
   var $tag_string = $("#post_tag_string,#upload_tag_string");
   $("div.input").has($tag_string).prevAll().hide();
   $("#open-edit-dialog").hide();
-
-  $("#toggle-related-tags-link").show().click();
 
   var dialog = $("<div/>").attr("id", "edit-dialog");
   $("#form").appendTo(dialog);
@@ -167,12 +156,11 @@ Post.open_edit_dialog = function() {
 Post.close_edit_dialog = function(e, ui) {
   $("#form").appendTo($("#c-posts #edit,#c-uploads #a-new"));
   $("#edit-dialog").remove();
-  RelatedTag.show();
-  $("#toggle-related-tags-link").hide();
   var $tag_string = $("#post_tag_string,#upload_tag_string");
   $("div.input").has($tag_string).prevAll().show();
   $("#open-edit-dialog").show();
   $tag_string.css({"resize": "", "width": ""});
+  $(document).trigger("danbooru:close-post-edit-dialog");
 }
 
 Post.initialize_similar = function() {
@@ -433,20 +421,16 @@ Post.initialize_post_sections = function() {
     if (e.target.hash === "#comments") {
       $("#comments").show();
       $("#edit").hide();
-      $("#share").hide();
       $("#recommended").hide();
     } else if (e.target.hash === "#edit") {
       $("#edit").show();
       $("#comments").hide();
-      $("#share").hide();
       $("#post_tag_string").focus().selectEnd().height($("#post_tag_string")[0].scrollHeight);
-      $("#related-tags-button").trigger("click");
-      $("#fetch-data-manual").trigger("click");
       $("#recommended").hide();
+      $(document).trigger("danbooru:open-post-edit-tab");
     } else if (e.target.hash === "#recommended") {
       $("#comments").hide();
       $("#edit").hide();
-      $("#share").hide();
       $("#recommended").show();
       $.get("/recommended_posts", {context: "post", post_id: Utility.meta("post-id")}, function(data) {
         $("#recommended").html(data);
@@ -454,8 +438,6 @@ Post.initialize_post_sections = function() {
     } else {
       $("#edit").hide();
       $("#comments").hide();
-      $("#share").show();
-      addthis.init();
       $("#recommended").hide();
     }
 
@@ -615,32 +597,6 @@ Post.initialize_saved_searches = function() {
     e.preventDefault();
   });
 }
-
-Post.initialize_replace_image_dialog = function() {
-  $("#replace-image-dialog").dialog({
-    autoOpen: false,
-    width: 700,
-    modal: true,
-    buttons: {
-      "Submit": function() {
-        $("#replace-image-dialog form").submit();
-        $(this).dialog("close");
-      },
-      "Cancel": function() {
-        $(this).dialog("close");
-      }
-    }
-  });
-
-  $('#replace-image-dialog form').submit(function() {
-    $('#replace-image-dialog').dialog('close');
-  });
-
-  $("#replace-image").on("click.danbooru", function(e) {
-    e.preventDefault();
-    $("#replace-image-dialog").dialog("open");
-  });
-};
 
 $(document).ready(function() {
   Post.initialize_all();

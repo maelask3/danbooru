@@ -141,14 +141,6 @@ class UserPresenter
     end
   end
 
-  def inviter(template)
-    if user.inviter_id
-      template.link_to_user(user.inviter)
-    else
-      "None"
-    end
-  end
-
   def appeal_count(template)
     template.link_to(user.appeal_count, template.post_appeals_path(:search => {:creator_name => user.name}))
   end
@@ -179,5 +171,15 @@ class UserPresenter
   
   def previous_names(template)
     user.user_name_change_requests.map { |req| template.link_to req.original_name, req }.join(", ").html_safe
+  end
+
+  def custom_css
+    user.custom_style.to_s.split(/\r\n|\r|\n/).map do |line|
+      if line =~ /\A@import/
+        line
+      else
+        line.gsub(/([^[:space:]])[[:space:]]*(?:!important)?[[:space:]]*(;|})/, "\\1 !important\\2")
+      end
+    end.join("\n")
   end
 end

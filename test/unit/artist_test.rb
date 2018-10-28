@@ -2,7 +2,7 @@ require 'test_helper'
 
 class ArtistTest < ActiveSupport::TestCase
   def assert_artist_found(expected_name, source_url)
-    artists = Artist.url_matches(source_url).to_a
+    artists = Artist.find_artists(source_url).to_a
 
     assert_equal(1, artists.size)
     assert_equal(expected_name, artists.first.name, "Testing URL: #{source_url}")
@@ -11,7 +11,7 @@ class ArtistTest < ActiveSupport::TestCase
   end
 
   def assert_artist_not_found(source_url)
-    artists = Artist.url_matches(source_url).to_a
+    artists = Artist.find_artists(source_url).to_a
     assert_equal(0, artists.size, "Testing URL: #{source_url}")
   rescue Net::OpenTimeout
     skip "Remote connection failed for #{source_url}"
@@ -166,9 +166,19 @@ class ArtistTest < ActiveSupport::TestCase
     end
 
     should "not allow invalid urls" do
-      artist = FactoryBot.create(:artist, :url_string => "blah")
+      artist = FactoryBot.build(:artist, :url_string => "blah")
       assert_equal(false, artist.valid?)
-      assert_equal([" blah must begin with http:// or https://"], artist.errors[:url])
+      assert_equal(["'blah' must begin with http:// or https:// "], artist.errors["urls.url"])
+    end
+
+    should "allow fixing invalid urls" do
+      artist = FactoryBot.build(:artist)
+      artist.urls << FactoryBot.build(:artist_url, url: "www.example.com", normalized_url: "www.example.com")
+      artist.save(validate: false)
+
+      artist.update(url_string: "http://www.example.com")
+      assert_equal(true, artist.valid?)
+      assert_equal("http://www.example.com", artist.urls.map(&:to_s).join)
     end
 
     should "make sure old urls are deleted" do
@@ -198,11 +208,15 @@ class ArtistTest < ActiveSupport::TestCase
       a2 = FactoryBot.create(:artist, :name => "subway", :url_string => "http://subway.com/x/test.jpg")
       a3 = FactoryBot.create(:artist, :name => "minko", :url_string => "https://minko.com/x/test.jpg")
 
-      assert_artist_found("rembrandt", "http://rembrandt.com/x/test.jpg")
-      assert_artist_found("rembrandt", "http://rembrandt.com/x/another.jpg")
-      assert_artist_not_found("http://nonexistent.com/test.jpg")
-      assert_artist_found("minko", "https://minko.com/x/test.jpg")
-      assert_artist_found("minko", "http://minko.com/x/test.jpg")
+      begin
+        assert_artist_found("rembrandt", "http://rembrandt.com/x/test.jpg")
+        assert_artist_found("rembrandt", "http://rembrandt.com/x/another.jpg")
+        assert_artist_not_found("http://nonexistent.com/test.jpg")
+        assert_artist_found("minko", "https://minko.com/x/test.jpg")
+        assert_artist_found("minko", "http://minko.com/x/test.jpg")
+      rescue Net::OpenTimeout
+        skip "network failure"
+      end
     end
 
     should "be case-insensitive to domains when finding matches by url" do
@@ -399,32 +413,41 @@ class ArtistTest < ActiveSupport::TestCase
 
     should "search on its name should return results" do
       artist = FactoryBot.create(:artist, :name => "artist")
+
       assert_not_nil(Artist.search(:name => "artist").first)
-      assert_not_nil(Artist.search(:name_matches => "artist").first)
+      assert_not_nil(Artist.search(:name_like => "artist").first)
       assert_not_nil(Artist.search(:any_name_matches => "artist").first)
+      assert_not_nil(Artist.search(:any_name_matches => "/art/").first)
     end
 
     should "search on other names should return matches" do
       artist = FactoryBot.create(:artist, :name => "artist", :other_names_comma => "aaa, ccc ddd")
-      assert_nil(Artist.other_names_match("artist").first)
-      assert_not_nil(Artist.other_names_match("aaa").first)
-      assert_not_nil(Artist.other_names_match("ccc_ddd").first)
-      assert_not_nil(Artist.search(:name => "other:aaa").first)
-      assert_not_nil(Artist.search(:name => "aaa").first)
 
-      assert_not_nil(Artist.search(:other_names_match => "aaa").first)
+      assert_nil(Artist.search(other_names_like: "*artist*").first)
+      assert_not_nil(Artist.search(other_names_like: "*aaa*").first)
+      assert_not_nil(Artist.search(other_names_like: "*ccc_ddd*").first)
+      assert_not_nil(Artist.search(name: "artist").first)
       assert_not_nil(Artist.search(:any_name_matches => "aaa").first)
+      assert_not_nil(Artist.search(:any_name_matches => "/a/").first)
     end
 
     should "search on group name and return matches" do
       cat_or_fish = FactoryBot.create(:artist, :name => "cat_or_fish")
       yuu = FactoryBot.create(:artist, :name => "yuu", :group_name => "cat_or_fish")
-      cat_or_fish.reload
-      assert_equal("yuu", cat_or_fish.member_names)
-      assert_not_nil(Artist.search(:name => "group:cat_or_fish").first)
 
-      assert_not_nil(Artist.search(:group_name_matches => "cat_or_fish").first)
+      assert_equal("yuu", cat_or_fish.member_names)
+      assert_not_nil(Artist.search(:group_name => "cat_or_fish").first)
       assert_not_nil(Artist.search(:any_name_matches => "cat_or_fish").first)
+      assert_not_nil(Artist.search(:any_name_matches => "/cat/").first)
+    end
+
+    should "search on url and return matches" do
+      bkub = FactoryBot.create(:artist, name: "bkub", url_string: "http://bkub.com")
+
+      assert_equal([bkub.id], Artist.search(url_matches: "bkub").map(&:id))
+      assert_equal([bkub.id], Artist.search(url_matches: "*bkub*").map(&:id))
+      assert_equal([bkub.id], Artist.search(url_matches: "/rifyu|bkub/").map(&:id))
+      assert_equal([bkub.id], Artist.search(url_matches: "http://bkub.com/test.jpg").map(&:id))
     end
 
     should "search on has_tag and return matches" do
@@ -474,15 +497,44 @@ class ArtistTest < ActiveSupport::TestCase
       assert_equal(Tag.categories.artist, tag.category)
     end
 
-    context "when updated" do
+    context "when saving" do
       setup do
-        @artist = FactoryBot.create(:artist)
+        @artist = FactoryBot.create(:artist, url_string: "http://foo.com")
         @artist.stubs(:merge_version?).returns(false)
       end
 
-      should "create a new version" do
+      should "create a new version when an url is added" do
         assert_difference("ArtistVersion.count") do
-          @artist.update(:url_string => "http://foo.com")
+          @artist.update(:url_string => "http://foo.com http://bar.com")
+          assert_equal(%w[http://bar.com http://foo.com], @artist.versions.last.url_array)
+        end
+      end
+
+      should "create a new version when an url is removed" do
+        assert_difference("ArtistVersion.count") do
+          @artist.update(:url_string => "")
+          assert_equal(%w[], @artist.versions.last.url_array)
+        end
+      end
+
+      should "create a new version when an url is marked inactive" do
+        assert_difference("ArtistVersion.count") do
+          @artist.update(:url_string => "-http://foo.com")
+          assert_equal(%w[-http://foo.com], @artist.versions.last.url_array)
+        end
+      end
+
+      should "not create a new version when nothing has changed" do
+        assert_no_difference("ArtistVersion.count") do
+          @artist.save
+          assert_equal(%w[http://foo.com], @artist.versions.last.url_array)
+        end
+      end
+
+      should "not save invalid urls" do
+        assert_no_difference("ArtistVersion.count") do
+          @artist.update(:url_string => "http://foo.com www.example.com")
+          assert_equal(%w[http://foo.com], @artist.versions.last.url_array)
         end
       end
     end

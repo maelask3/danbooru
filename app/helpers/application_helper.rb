@@ -107,15 +107,13 @@ module ApplicationHelper
     time_tag(time.strftime("%Y-%m-%d %H:%M"), time)
   end
 
-  def external_link_to(url, options = {})
-    if options[:truncate]
-      text = truncate(url, length: options[:truncate])
-    else
-      text = url
-    end
+  def external_link_to(url, truncate: nil, strip_scheme: false, link_options: {})
+    text = url
+    text = text.gsub(%r!\Ahttps?://!i, "") if strip_scheme
+    text = text.truncate(truncate) if truncate
 
     if url =~ %r!\Ahttps?://!i
-      link_to text, url, {rel: :nofollow}
+      link_to text, url, {rel: :nofollow}.merge(link_options)
     else
       url
     end
@@ -181,10 +179,8 @@ module ApplicationHelper
     render "dtext/form", options
   end
 
-  def dtext_preview_button(object, name, options = {})
-    options[:input_id] ||= "#{object}_#{name}"
-    options[:preview_id] ||= "dtext-preview"
-    submit_tag("Preview", "data-input-id" => options[:input_id], "data-preview-id" => options[:preview_id])
+  def dtext_preview_button(object, name, input_id: "#{object}_#{name}", preview_id: "dtext-preview")
+    tag.input value: "Preview", type: "button", class: "dtext-preview-button", "data-input-id": input_id, "data-preview-id": preview_id
   end
 
   def search_field(method, label: method.titleize, hint: nil, value: nil, **attributes)

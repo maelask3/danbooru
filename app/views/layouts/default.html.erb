@@ -1,5 +1,5 @@
 <!doctype html>
-<html xmlns:fb="http://ogp.me/ns/fb#">
+<html>
 <head>
   <title><%= yield :page_title %></title>
   <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
@@ -84,12 +84,21 @@
       $(window).trigger("danbooru:error", msg);
     }
   </script>
+  <% unless CurrentUser.is_anonymous? %>
+    <script>
+      window.Danbooru.mixpanelInit(
+        "<%= CurrentUser.id %>",
+        <%= CurrentUser.opt_out_mixpanel? %>,
+        <%= raw({"$created" =>CurrentUser.created_at.strftime('%F %T'), "$name" => CurrentUser.name, "level" => CurrentUser.level, "upload_count" => CurrentUser.post_upload_count, "post_update_count" => CurrentUser.post_update_count, "note_update_count" => CurrentUser.note_update_count, "favorite_count" => CurrentUser.favorite_count}.to_json) %>
+      );
+    </script>
+  <% end %>
 
 </head>
 <%= tag.body **body_attributes(CurrentUser.user) do %>
-  <header id="top">
-    <%= render "news_updates/listing" %>
+  <%= render "news_updates/listing" %>
 
+  <header id="top">
     <h1><%= link_to Danbooru.config.app_name, "/" %></h1>
     
     <div id="maintoggle">

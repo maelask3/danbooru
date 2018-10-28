@@ -60,6 +60,7 @@ class User < ApplicationRecord
     disable_responsive_mode
     disable_post_tooltips
     enable_recommended_posts
+    opt_out_mixpanel
   )
 
   include Danbooru::HasBitFlags
@@ -84,7 +85,6 @@ class User < ApplicationRecord
   before_create :encrypt_password_on_create
   before_update :encrypt_password_on_update
   after_save :update_cache
-  after_update :update_remote_cache
   before_create :promote_to_admin_if_first_user
   before_create :customize_new_user
   #after_create :notify_sock_puppets
@@ -171,16 +171,6 @@ class User < ApplicationRecord
     def update_cache
       Cache.put("uin:#{id}", name, 4.hours)
       Cache.put("uni:#{Cache.hash(name)}", id, 4.hours)
-    end
-
-    def update_remote_cache
-      if saved_change_to_name?
-        Danbooru.config.other_server_hosts.each do |server|
-          delay(queue: server).update_cache
-        end
-      end
-    rescue Exception
-      # swallow, since it'll be expired eventually anyway
     end
   end
 
@@ -447,10 +437,6 @@ class User < ApplicationRecord
   end
 
   module BlacklistMethods
-    def blacklisted_tag_array
-      Tag.scan_query(blacklisted_tags)
-    end
-
     def normalize_blacklisted_tags
       self.blacklisted_tags = blacklisted_tags.downcase if blacklisted_tags.present?
     end
@@ -761,10 +747,6 @@ class User < ApplicationRecord
       where("lower(name) = ?", name)
     end
 
-    def name_matches(name)
-      where("lower(name) like ? escape E'\\\\'", name.to_escaped_for_sql_like)
-    end
-
     def admins
       where("level = ?", Levels::ADMIN)
     end
@@ -798,12 +780,23 @@ class User < ApplicationRecord
     def search(params)
       q = super
 
-      if params[:name].present?
-        q = q.name_matches(params[:name].mb_chars.downcase.strip.tr(" ", "_"))
-      end
+      params = params.dup
+      params[:name_matches] = params.delete(:name) if params[:name].present?
+
+      q = q.search_text_attribute(:name, params)
+      q = q.attribute_matches(:level, params[:level])
+      q = q.attribute_matches(:inviter_id, params[:inviter_id])
+      q = q.attribute_matches(:post_upload_count, params[:post_upload_count])
+      q = q.attribute_matches(:post_update_count, params[:post_update_count])
+      q = q.attribute_matches(:note_update_count, params[:note_update_count])
+      q = q.attribute_matches(:favorite_count, params[:favorite_count])
 
       if params[:name_matches].present?
-        q = q.name_matches(params[:name_matches].mb_chars.downcase.strip.tr(" ", "_"))
+        q = q.where_ilike(:name, normalize_name(params[:name_matches]))
+      end
+
+      if params[:inviter].present?
+        q = q.where(inviter_id: search(params[:inviter]))
       end
 
       if params[:min_level].present?
@@ -812,10 +805,6 @@ class User < ApplicationRecord
 
       if params[:max_level].present?
         q = q.where("level <= ?", params[:max_level].to_i)
-      end
-
-      if params[:level].present?
-        q = q.where("level = ?", params[:level].to_i)
       end
 
       bitprefs_length = BOOLEAN_ATTRIBUTES.length

@@ -2,19 +2,18 @@ class Artist < ApplicationRecord
   extend Memoist
   class RevertError < Exception ; end
 
-  attribute :url_string, :string, default: nil
+  attr_accessor :url_string_changed
+
   before_validation :normalize_name
   after_save :create_version
   after_save :categorize_tag
   after_save :update_wiki
-  after_save :save_urls
-  validates_associated :urls
+  after_save :clear_url_string_changed
   validates :name, tag_name: true, uniqueness: true
   validate :validate_wiki, :on => :create
-  after_validation :merge_validation_errors
   belongs_to_creator
   has_many :members, :class_name => "Artist", :foreign_key => "group_name", :primary_key => "name"
-  has_many :urls, :dependent => :destroy, :class_name => "ArtistUrl"
+  has_many :urls, :dependent => :destroy, :class_name => "ArtistUrl", :autosave => true
   has_many :versions, -> {order("artist_versions.id ASC")}, :class_name => "ArtistVersion"
   has_one :wiki_page, :foreign_key => "title", :primary_key => "name"
   has_one :tag_alias, :foreign_key => "antecedent_name", :primary_key => "name"
@@ -147,7 +146,7 @@ class Artist < ApplicationRecord
         %r!\Ahttps?://(?:[a-zA-Z0-9_-]+\.)*#{domain}/\z!i
       end)
 
-      def url_matches(url)
+      def find_artists(url)
         url = ArtistUrl.normalize(url)
         artists = []
 
@@ -175,18 +174,26 @@ class Artist < ApplicationRecord
     end
 
     def url_array
-      urls.map(&:url)
+      urls.map(&:to_s)
     end
 
-    def save_urls
-      if url_string && saved_change_to_url_string?
-        Artist.transaction do
-          self.urls.clear
-          self.urls = url_string.scan(/[^[:space:]]+/).uniq.map do |url|
-            self.urls.find_or_create_by(url: url)
-          end
-        end
-      end
+    def url_string
+      url_array.sort.join("\n")
+    end
+
+    def url_string=(string)
+      url_string_was = url_string
+
+      self.urls = string.to_s.scan(/[^[:space:]]+/).map do |url|
+        is_active, url = ArtistUrl.parse_prefix(url)
+        self.urls.find_or_initialize_by(url: url, is_active: is_active)
+      end.uniq(&:url)
+
+      self.url_string_changed = (url_string_was != url_string)
+    end
+
+    def clear_url_string_changed
+      self.url_string_changed = false
     end
 
     def map_domain(x)
@@ -233,7 +240,7 @@ class Artist < ApplicationRecord
     end
 
     def other_names_array
-      other_names.try(:split, /\s/)
+      other_names.try(:split, /[[:space:]]+/)
     end
 
     def other_names_comma
@@ -253,7 +260,7 @@ class Artist < ApplicationRecord
 
   module VersionMethods
     def create_version(force=false)
-      if saved_change_to_name? || saved_change_to_url_string? || saved_change_to_is_active? || saved_change_to_is_banned? || saved_change_to_other_names? || saved_change_to_group_name? || saved_change_to_notes? || force
+      if saved_change_to_name? || url_string_changed || saved_change_to_is_active? || saved_change_to_is_banned? || saved_change_to_other_names? || saved_change_to_group_name? || saved_change_to_notes? || force
         if merge_version?
           merge_version
         else
@@ -268,7 +275,7 @@ class Artist < ApplicationRecord
         :name => name,
         :updater_id => CurrentUser.id,
         :updater_ip_addr => CurrentUser.ip_addr,
-        :url_string => url_string || url_array.join("\n"),
+        :url_string => url_string,
         :is_active => is_active,
         :is_banned => is_banned,
         :other_names => other_names,
@@ -280,7 +287,7 @@ class Artist < ApplicationRecord
       prev = versions.last
       prev.update_attributes(
         :name => name,
-        :url_string => url_string || url_array.join("\n"),
+        :url_string => url_string,
         :is_active => is_active,
         :is_banned => is_banned,
         :other_names => other_names,
@@ -455,75 +462,38 @@ class Artist < ApplicationRecord
   end
 
   module SearchMethods
-    def other_names_match(string)
-      if string =~ /\*/ && CurrentUser.is_builder?
-        where("artists.other_names ILIKE ? ESCAPE E'\\\\'", string.to_escaped_for_sql_like)
-      else
-        where("artists.other_names_index @@ to_tsquery('danbooru', E?)", Artist.normalize_name(string).to_escaped_for_tsquery)
-      end
-    end
-
-    def group_name_matches(name)
-      stripped_name = normalize_name(name).to_escaped_for_sql_like
-      where("artists.group_name LIKE ? ESCAPE E'\\\\'", stripped_name)
-    end
-
-    def name_matches(name)
-      stripped_name = normalize_name(name).to_escaped_for_sql_like
-      where("artists.name LIKE ? ESCAPE E'\\\\'", stripped_name)
-    end
-
     def named(name)
       where(name: normalize_name(name))
     end
 
-    def any_name_matches(name)
-      stripped_name = normalize_name(name).to_escaped_for_sql_like
-      if name =~ /\*/ && CurrentUser.is_builder?
-        where("(artists.name LIKE ? ESCAPE E'\\\\' OR artists.other_names LIKE ? ESCAPE E'\\\\')", stripped_name, stripped_name)
+    def any_name_matches(query)
+      if query =~ %r!\A/(.*)/\z!
+        where_regex(:name, $1).or(where_regex(:other_names, $1)).or(where_regex(:group_name, $1))
       else
-        name_for_tsquery = normalize_name(name).to_escaped_for_tsquery
-        where("(artists.name LIKE ? ESCAPE E'\\\\' OR artists.other_names_index @@ to_tsquery('danbooru', E?))", stripped_name, name_for_tsquery)
+        normalized_name = normalize_name(query)
+        normalized_name = "*#{normalized_name}*" unless normalized_name.include?("*")
+        where_like(:name, normalized_name).or(where_like(:other_names, normalized_name)).or(where_like(:group_name, normalized_name))
+      end
+    end
+
+    def url_matches(query)
+      if query =~ %r!\A/(.*)/\z!
+        where(id: ArtistUrl.where_regex(:url, $1).select(:artist_id))
+      elsif query.include?("*")
+        where(id: ArtistUrl.where_like(:url, query).select(:artist_id))
+      elsif query =~ %r!\Ahttps?://!i
+        find_artists(query)
+      else
+        where(id: ArtistUrl.where_like(:url, "*#{query}*").select(:artist_id))
       end
     end
 
     def search(params)
       q = super
 
-      case params[:name]
-      when /^http/
-        q = q.url_matches(params[:name])
-
-      when /name:(.+)/
-        q = q.name_matches($1)
-
-      when /other:(.+)/
-        q = q.other_names_match($1)
-
-      when /group:(.+)/
-        q = q.group_name_matches($1)
-
-      when /status:banned/
-        q = q.banned
-
-      when /status:active/
-        q = q.unbanned.active
-
-      when /./
-        q = q.any_name_matches(params[:name])
-      end
-
-      if params[:name_matches].present?
-        q = q.name_matches(params[:name_matches])
-      end
-
-      if params[:other_names_match].present?
-        q = q.other_names_match(params[:other_names_match])
-      end
-
-      if params[:group_name_matches].present?
-        q = q.group_name_matches(params[:group_name_matches])
-      end
+      q = q.search_text_attribute(:name, params)
+      q = q.search_text_attribute(:other_names, params)
+      q = q.search_text_attribute(:group_name, params)
 
       if params[:any_name_matches].present?
         q = q.any_name_matches(params[:any_name_matches])
@@ -542,11 +512,6 @@ class Artist < ApplicationRecord
 
       if params[:creator_id].present?
         q = q.where("artists.creator_id = ?", params[:creator_id].to_i)
-      end
-
-      # XXX deprecated, remove at some point.
-      if params[:empty_only].to_s.truthy?
-        params[:has_tag] = "false"
       end
 
       if params[:has_tag].to_s.truthy?
@@ -587,13 +552,6 @@ class Artist < ApplicationRecord
   include BanMethods
   extend SearchMethods
   include ApiMethods
-
-  def merge_validation_errors
-    errors[:urls].clear
-    urls.select(&:invalid?).each do |url|
-      errors[:url] << url.errors.full_messages.join("; ")
-    end
-  end
 
   def status
     if is_banned? && is_active?

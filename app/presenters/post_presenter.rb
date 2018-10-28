@@ -1,6 +1,6 @@
 class PostPresenter < Presenter
   attr_reader :pool, :next_post_in_pool
-  delegate :tag_list_html, :split_tag_list_html, :inline_tag_list_html, to: :tag_set_presenter
+  delegate :tag_list_html, :split_tag_list_html, :split_tag_list_text, :inline_tag_list_html, to: :tag_set_presenter
 
   def self.preview(post, options = {})
     if post.nil?
@@ -144,27 +144,11 @@ class PostPresenter < Presenter
   end
 
   def humanized_essential_tag_string
-    @post.humanized_essential_tag_string
+    @humanized_essential_tag_string ||= tag_set_presenter.humanized_essential_tag_string(default: "##{@post.id}")
   end
 
   def filename_for_download
     "#{humanized_essential_tag_string} - #{@post.md5}.#{@post.file_ext}"
-  end
-
-  def categorized_tag_groups
-    string = []
-
-    TagCategory.categorized_list.each do |category|
-      if @post.typed_tags(category).any?
-        string << @post.typed_tags(category).join(" ")
-      end
-    end
-    
-    string
-  end
-
-  def categorized_tag_string
-    categorized_tag_groups.join(" \n")
   end
 
   def safe_mode_message(template)
@@ -199,7 +183,7 @@ class PostPresenter < Presenter
   end
 
   def has_sequential_navigation?(params)
-    return false if params[:tags] =~ /(?:^|\s)(?:order|ordfav|ordpool):/i
+    return false if Tag.has_metatag?(params[:tags], :order, :ordfav, :ordpool)
     return false if params[:pool_id].present? || params[:favgroup_id].present?
     return CurrentUser.user.enable_sequential_post_navigation 
   end

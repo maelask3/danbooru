@@ -17,10 +17,17 @@ class ArtistUrlTest < ActiveSupport::TestCase
     end
 
     should "allow urls to be marked as inactive" do
-      url = FactoryBot.create(:artist_url, :url => "-http://monet.com")
+      url = FactoryBot.create(:artist_url, url: "http://monet.com", is_active: false)
       assert_equal("http://monet.com", url.url)
       assert_equal("http://monet.com/", url.normalized_url)
-      refute(url.is_active?)
+      assert_equal("-http://monet.com", url.to_s)
+    end
+
+    should "disallow invalid urls" do
+      url = FactoryBot.build(:artist_url, url: "www.example.com")
+
+      assert_equal(false, url.valid?)
+      assert_match(/must begin with http/, url.errors.full_messages.join)
     end
 
     should "always add a trailing slash when normalized" do
@@ -164,10 +171,16 @@ class ArtistUrlTest < ActiveSupport::TestCase
 
     should "normalize nijie urls" do
       url = FactoryBot.create(:artist_url, url: "https://pic03.nijie.info/nijie_picture/236014_20170620101426_0.png")
-      assert_equal("http://nijie.info/members.php?id=161703/", url.normalized_url)
+      assert_equal("http://nijie.info/members.php?id=236014/", url.normalized_url)
 
       url = FactoryBot.create(:artist_url, url: "https://nijie.info/members.php?id=161703")
       assert_equal("http://nijie.info/members.php?id=161703/", url.normalized_url)
+
+      url = FactoryBot.create(:artist_url, url: "https://www.nijie.info/members_illust.php?id=161703")
+      assert_equal("http://nijie.info/members.php?id=161703/", url.normalized_url)
+
+      url = FactoryBot.create(:artist_url, url: "https://nijie.info/invalid.php")
+      assert_equal("http://nijie.info/invalid.php/", url.normalized_url)
     end
 
     context "#search method" do

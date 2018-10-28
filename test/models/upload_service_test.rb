@@ -14,6 +14,14 @@ class UploadServiceTest < ActiveSupport::TestCase
     }
   }
 
+  setup do
+    Delayed::Worker.delay_jobs = true
+  end
+
+  teardown do
+    Delayed::Worker.delay_jobs = false
+  end
+
   context "::Utils" do
     subject { UploadService::Utils }
 
@@ -31,6 +39,28 @@ class UploadServiceTest < ActiveSupport::TestCase
           assert_operator(File.size(file.path), :>, 0)
 
           file.close
+        end
+      end
+
+      context "for a corrupt jpeg" do
+        setup do
+          @source = "https://raikou1.donmai.us/93/f4/93f4dd66ef1eb11a89e56d31f9adc8d0.jpg"
+          @mock_upload = mock("upload")
+          @mock_upload.stubs(:source).returns(@source)
+          @mock_upload.stubs(:referer_url).returns(nil)
+          @bad_file = File.open("#{Rails.root}/test/files/test-corrupt.jpg", "rb")
+          Downloads::File.any_instance.stubs(:download!).returns([@bad_file, nil])
+        end
+
+        teardown do
+          @bad_file.close
+        end
+
+        should "retry three times" do
+          DanbooruImageResizer.expects(:validate_shell).times(4).returns(false)
+          assert_raise(UploadService::Utils::CorruptFileError) do
+            subject.download_for_upload(@mock_upload)
+          end
         end
       end
 
@@ -108,9 +138,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       context "for an ugoira" do
         setup do
           @file = File.open("test/files/valid_ugoira.zip", "rb")
-          @upload = mock()
-          @upload.stubs(:is_video?).returns(false)
-          @upload.stubs(:is_ugoira?).returns(true)
+          @upload = Upload.new(file_ext: "zip")
         end
 
         teardown do
@@ -129,8 +157,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       context "for a video" do
         setup do
           @file = File.open("test/files/test-300x300.mp4", "rb")
-          @upload = mock()
-          @upload.stubs(:is_video?).returns(true)
+          @upload = Upload.new(file_ext: "mp4")
         end
 
         teardown do
@@ -148,9 +175,7 @@ class UploadServiceTest < ActiveSupport::TestCase
       context "for an image" do 
         setup do
           @file = File.open("test/files/test.jpg", "rb")
-          @upload = mock()
-          @upload.stubs(:is_video?).returns(false)
-          @upload.stubs(:is_ugoira?).returns(false)
+          @upload = Upload.new(file_ext: "jpg")
         end
 
         teardown do
@@ -468,7 +493,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       context "for a video" do
         setup do
-          @source = "https://www.sample-videos.com/video/mp4/720/big_buck_bunny_720p_1mb.mp4"
+          @source = "https://raikou2.donmai.us/b7/cb/b7cb80092be273771510952812380fa2.mp4"
         end
 
         should "work for a video" do
@@ -498,15 +523,9 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       context "for an invalid content type" do
-        setup do
-          @source = "http://www.example.com"
-          @service = subject.new(source: @source)
-        end
-
         should "fail" do
-          upload = @service.start!
-          upload.reload
-          assert_match(/error:/, upload.status)
+          upload = subject.new(source: "http://www.example.com").start!
+          assert_match(/\Aerror:.*File ext is invalid/, upload.status)
         end
       end
     end
@@ -685,7 +704,7 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "throw an error" do
-          assert_raises(ActiveRecord::RecordNotUnique) do
+          assert_raises(UploadService::Replacer::Error) do
             as_user { @post2.replace!(replacement_url: @new_url) }
           end
         end
@@ -717,9 +736,9 @@ class UploadServiceTest < ActiveSupport::TestCase
         setup do
           @user = travel_to(1.month.ago) { FactoryBot.create(:user) }
           as_user do
-            @post = FactoryBot.create(:post, source: "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png")
+            @post = FactoryBot.create(:post, source: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg")
             @post.stubs(:queue_delete_files)
-            @post.replace!(replacement_url: "https://danbooru.donmai.us/data/preview/download.png", tags: "-tag1 tag2")
+            @post.replace!(replacement_url: "https://raikou1.donmai.us/fd/b4/fdb47f79fb8da82e66eeb1d84a1cae8d.jpg", tags: "-tag1 tag2")
           end
 
           @replacement = @post.replacements.last
@@ -730,14 +749,14 @@ class UploadServiceTest < ActiveSupport::TestCase
             subject.undo!
           end
 
-          assert_equal("lowres tag2", @post.tag_string)
-          assert_equal(272, @post.image_width)
-          assert_equal(92, @post.image_height)
-          assert_equal(5969, @post.file_size)
-          assert_equal("png", @post.file_ext)
-          assert_equal("8f9327db2597fa57d2f42b4a6c5a9855", @post.md5)
-          assert_equal("8f9327db2597fa57d2f42b4a6c5a9855", Digest::MD5.file(@post.file).hexdigest)
-          assert_equal("https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png", @post.source)
+          assert_equal("tag2", @post.tag_string)
+          assert_equal(459, @post.image_width)
+          assert_equal(650, @post.image_height)
+          assert_equal(127238, @post.file_size)
+          assert_equal("jpg", @post.file_ext)
+          assert_equal("d34e4cf0a437a5d65f8e82b7bcd02606", @post.md5)
+          assert_equal("d34e4cf0a437a5d65f8e82b7bcd02606", Digest::MD5.file(@post.file).hexdigest)
+          assert_equal("https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg", @post.source)
         end
       end
 
@@ -792,14 +811,6 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       context "a post with a pixiv html source" do
-        setup do
-          Delayed::Worker.delay_jobs = true
-        end
-
-        teardown do
-          Delayed::Worker.delay_jobs = false
-        end
-
         should "replace with the full size image" do
           begin
             as_user do
@@ -858,17 +869,10 @@ class UploadServiceTest < ActiveSupport::TestCase
       end
 
       context "a post that is replaced to another file then replaced back to the original file" do
-        setup do
-          Delayed::Worker.delay_jobs = true
-        end
-
-        teardown do
-          Delayed::Worker.delay_jobs = false
-        end
-
         should "not delete the original files" do
           begin
-            FileUtils.expects(:rm_f).never
+            # this is called thrice to delete the file for 62247364
+            FileUtils.expects(:rm_f).times(3) 
 
             as_user do
               @post.replace!(replacement_url: "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=62247350")
@@ -896,16 +900,10 @@ class UploadServiceTest < ActiveSupport::TestCase
 
       context "two posts that have had their files swapped" do
         setup do
-          Delayed::Worker.delay_jobs = true
-
           as_user do
             @post1 = FactoryBot.create(:post)
             @post2 = FactoryBot.create(:post)
           end
-        end
-
-        teardown do
-          Delayed::Worker.delay_jobs = false
         end
 
         should "not delete the still active files" do
@@ -1027,11 +1025,6 @@ class UploadServiceTest < ActiveSupport::TestCase
     context "with a preprocessing predecessor" do
       setup do
         @predecessor = FactoryBot.create(:source_upload, status: "preprocessing", source: @source, image_height: 0, image_width: 0, file_ext: "jpg")
-        Delayed::Worker.delay_jobs = true
-      end
-
-      teardown do
-        Delayed::Worker.delay_jobs = false
       end
 
       should "schedule a job later" do
@@ -1080,6 +1073,18 @@ class UploadServiceTest < ActiveSupport::TestCase
         assert_difference(-> { Upload.count }) do
           service.start!
         end
+      end
+
+      should "assign the rating from tags" do
+        service = subject.new(source: @source, tag_string: "rating:safe blah")
+        upload = service.start!
+
+        assert_equal(true, upload.valid?)
+        assert_equal("s", upload.rating)
+        assert_equal("rating:safe blah ", upload.tag_string)
+
+        assert_equal("s", upload.post.rating)
+        assert_equal("blah", upload.post.tag_string)
       end
     end
   end
