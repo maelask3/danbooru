@@ -19,7 +19,7 @@ class TagSetPresenter < Presenter
     html = ""
 
     if ordered_tags.present?
-      html << '<ul itemscope itemtype="http://schema.org/ImageObject">'
+      html << '<ul>'
       ordered_tags.each do |tag|
         html << build_list_item(tag, current_query: current_query, show_extra_links: show_extra_links, name_only: name_only)
       end
@@ -73,7 +73,7 @@ class TagSetPresenter < Presenter
       next if type_tags.empty?
 
       if max_tags > 0 && type_tags.length > max_tags
-        type_tags = type_tags.take(max_tags) + ["others"]
+        type_tags = type_tags.sort_by {|x| -x.size}.take(max_tags) + ["etc"]
       end
 
       if regexmap != //

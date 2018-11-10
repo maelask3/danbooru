@@ -144,6 +144,11 @@ module Danbooru
       2
     end
 
+    # Members cannot change the category of pools with more than this many posts.
+    def pool_category_change_limit
+      100
+    end
+
     # Whether safe mode should be enabled. Safe mode hides all non-rating:safe posts from view.
     def enable_safe_mode?(request, user)
       !!(request.host =~ /safe/ || request.params[:safe_mode] || user.enable_safe_mode?)
@@ -341,7 +346,7 @@ module Danbooru
           "extra" => ["co"],
           "header" => %{<h2 class="copyright-tag-list">Copyrights</h2>},
           "humanized" => {
-            "slice" => 5,
+            "slice" => 1,
             "exclusion" => [],
             "regexmap" => //,
             "formatstr" => "(%s)"

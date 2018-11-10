@@ -49,8 +49,8 @@ module Sources
       PATH_PROFILE = %r{\Ahttps?://(www\.)?deviantart\.com/#{ARTIST}/?\z}i
       SUBDOMAIN_PROFILE = %r{\Ahttps?://#{ARTIST}\.deviantart\.com/?\z}i
 
-      def self.match?(*urls)
-        urls.compact.any? { |x| x.match?(/^https?:\/\/(?:.+?\.)?deviantart\.(?:com|net)/) }
+      def domains
+        ["deviantart.net", "deviantart.com"]
       end
 
       def site_name
@@ -165,7 +165,7 @@ module Sources
 
             # href may be missing the `http://` bit (ex: `inprnt.com`, `//inprnt.com`). Add it if missing.
             uri = Addressable::URI.heuristic_parse(element["href"]) rescue nil
-            if uri.present?
+            if uri.present? && uri.path.present?
               uri.scheme ||= "http"
               element["href"] = uri.to_s
             end

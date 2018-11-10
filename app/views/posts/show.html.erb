@@ -1,12 +1,12 @@
 <div id="c-posts">
   <div id="a-show">
     <aside id="sidebar">
-      <%= render "posts/partials/common/search", :path => posts_path, :tags => params[:tags], :tags_dom_id => "tags" %>
+      <%= render "posts/partials/common/search", :path => posts_path, :tags => params[:q], :tags_dom_id => "tags" %>
 
       <%= render "posts/partials/index/blacklist" %>
 
       <section id="tag-list">
-        <%= @post.presenter.split_tag_list_html(current_query: params[:tags], show_extra_links: CurrentUser.user.is_gold?) %>
+        <%= @post.presenter.split_tag_list_html(current_query: params[:q], show_extra_links: CurrentUser.user.is_gold?) %>
       </section>
 
       <section id="post-information">
@@ -47,11 +47,11 @@
 
       <%= render "posts/partials/show/notices", :post => @post %>
 
-      <section itemscope itemtype="http://schema.org/ImageObject" id="image-container" <%= PostPresenter.data_attributes(@post) %>>
+      <%= content_tag(:section, { id: "image-container" }.merge(PostPresenter.data_attributes(@post))) do -%>
         <div id="note-container"></div>
         <div id="note-preview"></div>
-        <%= @post.presenter.image_html(self) %>
-      </section>
+        <%= render "posts/partials/show/embedded", post: @post %>
+      <% end -%>
 
       <% if CurrentUser.is_member? %>
         <%= content_tag(:div, class: "fav-buttons fav-buttons-#{@post.is_favorited?}") do %>
@@ -67,7 +67,7 @@
 
       <section id="mark-as-translated-section" style="display: none;">
         <%= form_tag(mark_as_translated_post_path(@post), :class => "simple_form", :method => :put) do |f| %>
-          <%= hidden_field_tag :tags_query, params[:tags] %>
+          <%= hidden_field_tag :tags_query, params[:q] %>
           <%= hidden_field_tag :pool_id, params[:pool_id] %>
 
           <fieldset>
@@ -197,6 +197,14 @@
   <%= tag.meta name: "og:site", content: Danbooru.config.app_name %>
 
   <%= auto_discovery_link_tag(:atom, comments_url(:atom, search: { post_id: @post.id }), title: "Comments for post ##{@post.id}") %>
+
+  <script>
+    window._paq = window._paq || [];
+    window._paq.push(["setCustomVariable", 1, "rating", '<%= j @post.rating %>', "page"]);
+    window._paq.push(["setCustomVariable", 2, "fileSize", <%= @post.file_size %>, "page"]);
+    window._paq.push(["setCustomVariable", 3, "sourceDomain", '<%= j @post.source_domain %>', "page"]);
+    window._paq.push(["setCustomVariable", 3, "blocked", <%= @post.levelblocked? %>, "page"]);
+  </script>
 <% end %>
 
 <%= render "posts/partials/common/secondary_links" %>
