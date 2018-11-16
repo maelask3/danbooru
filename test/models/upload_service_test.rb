@@ -25,7 +25,7 @@ class UploadServiceTest < ActiveSupport::TestCase
   context "::Utils" do
     subject { UploadService::Utils }
 
-    context "#download_for_upload" do
+    context "#get_file_for_upload" do
       context "for a non-source site" do
         setup do
           @source = "https://upload.wikimedia.org/wikipedia/commons/c/c5/Moraine_Lake_17092005.jpg"          
@@ -34,7 +34,7 @@ class UploadServiceTest < ActiveSupport::TestCase
         end
 
         should "work on a jpeg" do
-          file = subject.download_for_upload(@upload)
+          file = subject.get_file_for_upload(@upload)
 
           assert_operator(File.size(file.path), :>, 0)
 
@@ -46,7 +46,7 @@ class UploadServiceTest < ActiveSupport::TestCase
         setup do
           @source = "https://raikou1.donmai.us/93/f4/93f4dd66ef1eb11a89e56d31f9adc8d0.jpg"
           @mock_upload = mock("upload")
-          @mock_upload.stubs(:source).returns(@source)
+          @mock_upload.stubs(:source_url).returns(@source)
           @mock_upload.stubs(:referer_url).returns(nil)
           @bad_file = File.open("#{Rails.root}/test/files/test-corrupt.jpg", "rb")
           Downloads::File.any_instance.stubs(:download!).returns([@bad_file, nil])
@@ -59,7 +59,7 @@ class UploadServiceTest < ActiveSupport::TestCase
         should "retry three times" do
           DanbooruImageResizer.expects(:validate_shell).times(4).returns(false)
           assert_raise(UploadService::Utils::CorruptFileError) do
-            subject.download_for_upload(@mock_upload)
+            subject.get_file_for_upload(@mock_upload)
           end
         end
       end
@@ -73,7 +73,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
         should "work on an ugoira url" do
           begin
-            file = subject.download_for_upload(@upload)
+            file = subject.get_file_for_upload(@upload)
 
             assert_operator(File.size(file.path), :>, 0)
 
@@ -95,7 +95,7 @@ class UploadServiceTest < ActiveSupport::TestCase
 
         should "work on an ugoira url" do
           begin
-            file = subject.download_for_upload(@upload)
+            file = subject.get_file_for_upload(@upload)
 
             assert_not_nil(@upload.context["ugoira"])
             assert_operator(File.size(file.path), :>, 0)
@@ -1085,6 +1085,48 @@ class UploadServiceTest < ActiveSupport::TestCase
 
         assert_equal("s", upload.post.rating)
         assert_equal("blah", upload.post.tag_string)
+      end
+    end
+
+    context "with a source containing unicode characters" do
+      should "upload successfully" do
+        source1 = "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg?one=東方&two=a%20b"
+        source2 = "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg?one=%E6%9D%B1%E6%96%B9&two=a%20b"
+        service = subject.new(source: source1, rating: "s")
+
+        assert_nothing_raised { @upload = service.start! }
+        assert_equal(true, @upload.is_completed?)
+        assert_equal(source2, @upload.source)
+      end
+
+      should "normalize unicode characters in the source field" do
+        source1 = "poke\u0301mon" # pokémon (nfd form)
+        source2 = "pok\u00e9mon"  # pokémon (nfc form)
+        service = subject.new(source: source1, rating: "s", file: upload_file("test/files/test.jpg"))
+
+        assert_nothing_raised { @upload = service.start! }
+        assert_equal(source2, @upload.source)
+      end
+    end
+
+    context "without a file or a source url" do
+      should "fail gracefully" do
+        service = subject.new(source: "blah", rating: "s")
+
+        assert_nothing_raised { @upload = service.start! }
+        assert_equal(true, @upload.is_errored?)
+        assert_match(/No file or source URL provided/, @upload.status)
+      end
+    end
+
+    context "with both a file and a source url" do
+      should "upload the file and set the source field to the given source" do
+        service = subject.new(file: upload_file("test/files/test.jpg"), source: "http://www.example.com", rating: "s")
+
+        assert_nothing_raised { @upload = service.start! }
+        assert_equal(true, @upload.is_completed?)
+        assert_equal("ecef68c44edb8a0d6a3070b5f8e8ee76", @upload.md5)
+        assert_equal("http://www.example.com", @upload.source)
       end
     end
   end

@@ -91,12 +91,7 @@ class UploadService
       begin
         upload.update(status: "preprocessing")
 
-        if params[:file].present?
-          file = params[:file]
-        elsif Utils.is_downloadable?(source)
-          file = Utils.download_for_upload(upload)
-        end
-
+        file = Utils.get_file_for_upload(upload, file: params[:file])
         Utils.process_file(upload, file, original_post_id: original_post_id)
 
         upload.rating = params[:rating]

@@ -241,8 +241,9 @@ class Pool < ApplicationRecord
   end
 
   def synchronize
-    added = post_ids - post_ids_was
-    removed = post_ids_was - post_ids
+    post_ids_before = post_ids_before_last_save || post_ids_was
+    added = post_ids - post_ids_before
+    removed = post_ids_before - post_ids
 
     added.each do |post_id|
       post = Post.find(post_id)
@@ -267,19 +268,25 @@ class Pool < ApplicationRecord
   end
 
   def first_post?(post_id)
-    page_number(post_id) == 1
+    post_id == post_ids.first
+  end
+
+  def last_post?(post_id)
+    post_id == post_ids.last
   end
 
   # XXX finds wrong post when the pool contains multiple copies of the same post (#2042).
   def previous_post_id(post_id)
+    return nil if first_post?(post_id) || !contains?(post_id)
+
     n = post_ids.index(post_id) - 1
-    return nil if n < 0
     post_ids[n]
   end
 
   def next_post_id(post_id)
+    return nil if last_post?(post_id) || !contains?(post_id)
+
     n = post_ids.index(post_id) + 1
-    return nil if n >= post_ids.size
     post_ids[n]
   end
 
