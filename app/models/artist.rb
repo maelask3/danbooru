@@ -3,8 +3,10 @@ class Artist < ApplicationRecord
   class RevertError < Exception ; end
 
   attr_accessor :url_string_changed
+  array_attribute :other_names
 
   before_validation :normalize_name
+  before_validation :normalize_other_names
   after_save :create_version
   after_save :categorize_tag
   after_save :update_wiki
@@ -174,11 +176,11 @@ class Artist < ApplicationRecord
     end
 
     def url_array
-      urls.map(&:to_s)
+      urls.map(&:to_s).sort
     end
 
     def url_string
-      url_array.sort.join("\n")
+      url_array.join("\n")
     end
 
     def url_string=(string)
@@ -239,16 +241,9 @@ class Artist < ApplicationRecord
       name.tr("_", " ")
     end
 
-    def other_names_array
-      other_names.try(:split, /[[:space:]]+/)
-    end
-
-    def other_names_comma
-      other_names_array.try(:join, ", ")
-    end
-
-    def other_names_comma=(string)
-      self.other_names = string.split(/,/).map {|x| Artist.normalize_name(x)}.join(" ")
+    def normalize_other_names
+      self.other_names = other_names.map { |x| Artist.normalize_name(x) }.uniq
+      self.other_names -= [name]
     end
   end
 
@@ -275,7 +270,7 @@ class Artist < ApplicationRecord
         :name => name,
         :updater_id => CurrentUser.id,
         :updater_ip_addr => CurrentUser.ip_addr,
-        :url_string => url_string,
+        :urls => url_array,
         :is_active => is_active,
         :is_banned => is_banned,
         :other_names => other_names,
@@ -287,7 +282,7 @@ class Artist < ApplicationRecord
       prev = versions.last
       prev.update_attributes(
         :name => name,
-        :url_string => url_string,
+        :urls => url_array,
         :is_active => is_active,
         :is_banned => is_banned,
         :other_names => other_names,
@@ -306,7 +301,7 @@ class Artist < ApplicationRecord
       end
 
       self.name = version.name
-      self.url_string = version.url_string
+      self.url_string = version.urls.join("\n")
       self.is_active = version.is_active
       self.other_names = version.other_names
       self.group_name = version.group_name
@@ -315,17 +310,26 @@ class Artist < ApplicationRecord
   end
 
   module FactoryMethods
+    # Make a new artist, fetching the defaults either from the given source, or
+    # from the source of the artist's last upload.
     def new_with_defaults(params)
-      Artist.new(params).tap do |artist|
-        if artist.name.present?
-          post = CurrentUser.without_safe_mode do
-            Post.tag_match("source:http #{artist.name}").where("true /* Artist.new_with_defaults */").first
-          end
-          unless post.nil? || post.source.blank?
-            artist.url_string = post.source
-          end
+      source = params.delete(:source)
+
+      if source.blank? && params[:name].present?
+        CurrentUser.without_safe_mode do
+          post = Post.tag_match("source:http* #{params[:name]}").first
+          source = post.try(:source)
         end
       end
+
+      if source.present?
+        artist = Sources::Strategies.find(source).new_artist
+        artist.attributes = params
+      else
+        artist = Artist.new(params)
+      end
+
+      artist.tap(&:validate) # run before_validation callbacks to normalize the names
     end
   end
 
@@ -466,13 +470,21 @@ class Artist < ApplicationRecord
       where(name: normalize_name(name))
     end
 
+    def any_other_name_matches(regex)
+      where(id: Artist.from("unnest(other_names) AS other_name").where("other_name ~ ?", regex))
+    end
+
+    def any_other_name_like(name)
+      where(id: Artist.from("unnest(other_names) AS other_name").where("other_name LIKE ?", name.to_escaped_for_sql_like))
+    end
+
     def any_name_matches(query)
       if query =~ %r!\A/(.*)/\z!
-        where_regex(:name, $1).or(where_regex(:other_names, $1)).or(where_regex(:group_name, $1))
+        where_regex(:name, $1).or(any_other_name_matches($1)).or(where_regex(:group_name, $1))
       else
         normalized_name = normalize_name(query)
         normalized_name = "*#{normalized_name}*" unless normalized_name.include?("*")
-        where_like(:name, normalized_name).or(where_like(:other_names, normalized_name)).or(where_like(:group_name, normalized_name))
+        where_like(:name, normalized_name).or(any_other_name_like(normalized_name)).or(where_like(:group_name, normalized_name))
       end
     end
 
@@ -488,15 +500,30 @@ class Artist < ApplicationRecord
       end
     end
 
+    def any_name_or_url_matches(query)
+      if query =~ %r!\Ahttps?://!i
+        url_matches(query)
+      else
+        any_name_matches(query)
+      end
+    end
+
     def search(params)
       q = super
 
       q = q.search_text_attribute(:name, params)
-      q = q.search_text_attribute(:other_names, params)
       q = q.search_text_attribute(:group_name, params)
+
+      if params[:any_other_name_like]
+        q = q.any_other_name_like(params[:any_other_name_like])
+      end
 
       if params[:any_name_matches].present?
         q = q.any_name_matches(params[:any_name_matches])
+      end
+
+      if params[:any_name_or_url_matches].present?
+        q = q.any_name_or_url_matches(params[:any_name_or_url_matches])
       end
 
       if params[:url_matches].present?
@@ -536,12 +563,6 @@ class Artist < ApplicationRecord
     end
   end
 
-  module ApiMethods
-    def hidden_attributes
-      super + [:other_names_index]
-    end
-  end
-
   include UrlMethods
   include NameMethods
   include GroupMethods
@@ -551,7 +572,6 @@ class Artist < ApplicationRecord
   include TagMethods
   include BanMethods
   extend SearchMethods
-  include ApiMethods
 
   def status
     if is_banned? && is_active?

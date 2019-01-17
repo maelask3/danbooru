@@ -1,6 +1,11 @@
 require 'dtext'
 
 module ApplicationHelper
+  def diff_list_html(new, old, latest)
+    diff = SetDiff.new(new, old, latest)
+    render "diff_list", diff: diff
+  end
+
   def wordbreakify(string)
     lines = string.scan(/.{1,10}/)
     wordbreaked_string = lines.map{|str| h(str)}.join("<wbr>")
@@ -28,7 +33,7 @@ module ApplicationHelper
   def li_link_to(text, url, id_prefix: "", **options)
     klass = options.delete(:class)
     id = id_prefix + text.downcase.gsub(/[^a-z ]/, "").parameterize
-    tag.li(link_to(text, url, options), id: id, class: klass)
+    tag.li(link_to(text, url, id: "#{id}-link", **options), id: id, class: klass)
   end
 
   def fast_link_to(text, link_params, options = {})
@@ -140,6 +145,8 @@ module ApplicationHelper
   end
 
   def link_to_user(user, options = {})
+    return "anonymous" if user.blank?
+
     user_class = user.level_class
     user_class = user_class + " user-post-approver" if user.can_approve_posts?
     user_class = user_class + " user-post-uploader" if user.can_upload_free?

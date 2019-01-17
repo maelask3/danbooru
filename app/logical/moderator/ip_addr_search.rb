@@ -26,11 +26,12 @@ module Moderator
       add_row(sums, ArtistVersion.where(updater_ip_addr: ip_addrs).group(:updater).count)
       add_row(sums, NoteVersion.where(updater_ip_addr: ip_addrs).group(:updater).count)
       add_row(sums, WikiPageVersion.where(updater_ip_addr: ip_addrs).group(:updater).count)
-      add_row(sums, Comment.where(ip_addr: ip_addrs).group(:creator).count)
+      add_row(sums, Comment.where(creator_ip_addr: ip_addrs).group(:creator).count)
       add_row(sums, Dmail.where(creator_ip_addr: ip_addrs).group(:from).count)
       add_row(sums, PostAppeal.where(creator_ip_addr: ip_addrs).group(:creator).count)
       add_row(sums, PostFlag.where(creator_ip_addr: ip_addrs).group(:creator).count)
       add_row(sums, Upload.where(uploader_ip_addr: ip_addrs).group(:uploader).count)
+      add_row(sums, UserFeedback.where(creator_ip_addr: ip_addrs).group(:creator).count)
       add_row(sums, Hash[User.where(last_ip_addr: ip_addrs).collect { |user| [user, 1] }])
 
       add_row_id(sums, PoolArchive.where(updater_ip_addr: ip_addrs).group(:updater_id).count) if PoolArchive.enabled?
@@ -54,12 +55,13 @@ module Moderator
       add_row(sums, PoolArchive.where(updater_id: users.map(&:id)).group(:updater_ip_addr).count) if PoolArchive.enabled?
       add_row(sums, PostArchive.where(updater_id: users.map(&:id)).group(:updater_ip_addr).count) if PostArchive.enabled?
       add_row(sums, WikiPageVersion.where(updater: users).group(:updater_ip_addr).count)
-      add_row(sums, Comment.where(creator: users).group(:ip_addr).count)
+      add_row(sums, Comment.where(creator: users).group(:creator_ip_addr).count)
       add_row(sums, Dmail.where(from: users).group(:creator_ip_addr).count)
       add_row(sums, PostAppeal.where(creator: users).where.not(creator_ip_addr: nil).group(:creator_ip_addr).count)
       add_row(sums, PostFlag.where(creator: users).group(:creator_ip_addr).count)
       add_row(sums, Upload.where(uploader: users).group(:uploader_ip_addr).count)
       add_row(sums, User.where(id: users).where.not(last_ip_addr: nil).group(:last_ip_addr).count)
+      add_row(sums, UserFeedback.where(creator_id: users).where.not(creator_ip_addr: nil).group(:creator_ip_addr).count)
 
       sums
     end

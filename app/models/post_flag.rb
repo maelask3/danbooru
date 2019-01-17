@@ -33,7 +33,7 @@ class PostFlag < ApplicationRecord
     end
 
     def post_tags_match(query)
-      PostQueryBuilder.new(query).build(self.joins(:post))
+      where(post_id: PostQueryBuilder.new(query).build.reorder(""))
     end
 
     def resolved
@@ -145,6 +145,10 @@ class PostFlag < ApplicationRecord
 
   def validate_creator_is_not_limited
     return if is_deletion
+
+    if creator.no_flagging?
+      errors[:creator] << "cannot flag posts"
+    end
 
     if creator_id != User.system.id && PostFlag.for_creator(creator_id).where("created_at > ?", 30.days.ago).count >= CREATION_THRESHOLD
       report = Reports::PostFlags.new(user_id: post.uploader_id, date_range: 90.days.ago)

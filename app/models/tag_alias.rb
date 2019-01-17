@@ -1,14 +1,12 @@
 class TagAlias < TagRelationship
-  before_save :ensure_tags_exist
   after_save :clear_all_cache
   after_destroy :clear_all_cache
   after_save :clear_all_cache, if: ->(rec) {rec.is_retired?}
   after_save :create_mod_action
-  validates_uniqueness_of :antecedent_name
+  validates_uniqueness_of :antecedent_name, scope: :status, conditions: -> { active }
   validate :absence_of_transitive_relation
-  validate :antecedent_and_consequent_are_different
-  validate :consequent_has_wiki_page, :on => :create
-  validate :mininum_antecedent_count, :on => :create
+  validate :wiki_pages_present, on: :create, unless: :skip_secondary_validations
+  validate :mininum_antecedent_count, on: :create, unless: :skip_secondary_validations
 
   module CacheMethods
     extend ActiveSupport::Concern
@@ -38,14 +36,15 @@ class TagAlias < TagRelationship
     def forum_updater
       @forum_updater ||= begin
         post = if forum_topic
-          forum_post || forum_topic.posts.where("body like ?", TagAliasRequest.command_string(antecedent_name, consequent_name) + "%").last
+          forum_post || forum_topic.posts.where("body like ?", TagAliasRequest.command_string(antecedent_name, consequent_name, id) + "%").last
         else
           nil
         end
         ForumUpdater.new(
           forum_topic, 
           forum_post: post,
-          expected_title: TagAliasRequest.topic_title(antecedent_name, consequent_name)
+          expected_title: TagAliasRequest.topic_title(antecedent_name, consequent_name),
+          skip_update: !TagRelationship::SUPPORT_HARD_CODED
         )
       end
     end
@@ -54,6 +53,14 @@ class TagAlias < TagRelationship
   include CacheMethods
   include ApprovalMethods
   include ForumMethods
+
+  concerning :EmbeddedText do
+    class_methods do
+      def embedded_pattern
+        /\[ta:(?<id>\d+)\]/m
+      end
+    end
+  end
 
   def self.to_aliased(names)
     Cache.get_multi(Array(names), "ta") do |tag|
@@ -101,17 +108,8 @@ class TagAlias < TagRelationship
   def absence_of_transitive_relation
     # We don't want a -> b && b -> c chains if the b -> c alias was created first.
     # If the a -> b alias was created first, the new one will be allowed and the old one will be moved automatically instead.
-    if self.class.active.exists?(["antecedent_name = ?", consequent_name])
-      self.errors[:base] << "A tag alias for #{consequent_name} already exists"
-      false
-    end
-  end
-
-  def antecedent_and_consequent_are_different
-    normalize_names
-    if antecedent_name == consequent_name
-      self.errors[:base] << "Cannot alias a tag to itself"
-      false
+    if TagAlias.active.exists?(antecedent_name: consequent_name)
+      errors[:base] << "A tag alias for #{consequent_name} already exists"
     end
   end
 
@@ -155,17 +153,10 @@ class TagAlias < TagRelationship
     end
   end
 
-  def ensure_tags_exist
-    Tag.find_or_create_by_name(antecedent_name)
-    Tag.find_or_create_by_name(consequent_name)
-  end
-
   def ensure_category_consistency
     if antecedent_tag.category != consequent_tag.category && antecedent_tag.category != Tag.categories.general
       consequent_tag.update_attribute(:category, antecedent_tag.category)
     end
-
-    true
   end
 
   def update_posts
@@ -206,27 +197,23 @@ class TagAlias < TagRelationship
     end
   end
 
-  def reject!
+  def reject!(update_topic: true)
     update(status: "deleted")
     clear_all_cache
-    forum_updater.update(reject_message(CurrentUser.user), "REJECTED")
-    destroy
+    forum_updater.update(reject_message(CurrentUser.user), "REJECTED") if update_topic
   end
 
-  def consequent_has_wiki_page
-    return if skip_secondary_validations
-
-    unless WikiPage.titled(consequent_name).exists?
-      self.errors[:base] << "The #{consequent_name} tag needs a corresponding wiki page"
-      return false
+  def wiki_pages_present
+    if antecedent_wiki.present? && consequent_wiki.present?
+      errors[:base] << conflict_message
+    elsif antecedent_wiki.blank? && consequent_wiki.blank?
+      errors[:base] << "The #{consequent_name} tag needs a corresponding wiki page"
     end
   end
 
   def mininum_antecedent_count
-    return if skip_secondary_validations
-
-    unless Post.fast_count(antecedent_name) >= 50
-      self.errors[:base] << "The #{antecedent_name} tag must have at least 50 posts for an alias to be created"
+    if antecedent_tag.post_count < 50
+      errors[:base] << "The #{antecedent_name} tag must have at least 50 posts for an alias to be created"
     end
   end
 

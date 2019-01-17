@@ -101,13 +101,33 @@ module Sources
         page_url || image_url
       end
 
-      # A link to the artist's profile page on the site.
-      def profile_url
-        ""
+      # A name to suggest as the artist's tag name when creating a new artist.
+      # This should usually be the artist's account name.
+      def tag_name
+        artist_name
       end
 
+      # The artists's primary name. If an artist has both a display name and an
+      # account name, this should be the display name.
       def artist_name
-        ""
+        nil
+      end
+
+      # A list of all names associated with the artist. These names will be suggested
+      # as other names when creating a new artist.
+      def other_names
+        [artist_name, tag_name].compact.uniq
+      end
+
+      # A link to the artist's profile page on the site.
+      def profile_url
+        nil
+      end
+
+      # A list of all profile urls associated with the artist. These urls will
+      # be suggested when creating a new artist.
+      def profile_urls
+        [normalize_for_artist_finder]
       end
 
       def artist_commentary_title
@@ -157,13 +177,18 @@ module Sources
         profile_url.presence || url
       end
 
-      # A unique identifier for the artist. This is used for artist creation.
-      def unique_id
-        artist_name
-      end
-
       def artists
         Artist.find_artists(normalize_for_artist_finder)
+      end
+
+      # A new artist entry with suggested defaults for when the artist doesn't
+      # exist. Used in Artist.new_with_defaults to prefill the new artist form.
+      def new_artist
+        Artist.new(
+          name: tag_name,
+          other_names: other_names,
+          url_string: profile_urls.join("\n")
+        )
       end
 
       def file_url
@@ -178,8 +203,16 @@ module Sources
         (@tags || []).uniq
       end
 
+      def normalized_tags
+        tags.map { |tag, url| normalize_tag(tag) }.sort.uniq
+      end
+
+      def normalize_tag(tag)
+        WikiPage.normalize_other_name(tag).downcase
+      end
+
       def translated_tags
-        translated_tags = tags.map(&:first).flat_map(&method(:translate_tag)).uniq.sort
+        translated_tags = normalized_tags.flat_map(&method(:translate_tag)).uniq.sort
         translated_tags.reject { |tag| tag.category == Tag.categories.artist }
       end
 
@@ -187,7 +220,7 @@ module Sources
       def translate_tag(untranslated_tag)
         return [] if untranslated_tag.blank?
 
-        translated_tag_names = WikiPage.active.other_names_equal(untranslated_tag).uniq.pluck(:title)
+        translated_tag_names = WikiPage.active.other_names_include(untranslated_tag).uniq.pluck(:title)
         translated_tag_names = TagAlias.to_aliased(translated_tag_names)
         translated_tags = Tag.where(name: translated_tag_names)
 
@@ -224,25 +257,36 @@ module Sources
       end
       memoize :related_posts
 
+      # A hash containing the results of any API calls made by the strategy. For debugging purposes only.
+      def api_response
+        nil
+      end
+
       def to_h
         return {
-          :artist_name => artist_name,
+          :artist => {
+            :name => artist_name,
+            :tag_name => tag_name,
+            :other_names => other_names,
+            :profile_url => profile_url,
+            :profile_urls => profile_urls,
+          },
           :artists => artists.as_json(include: :sorted_urls),
-          :profile_url => profile_url,
           :image_url => image_url,
           :image_urls => image_urls,
           :page_url => page_url,
           :canonical_url => canonical_url,
           :normalized_for_artist_finder_url => normalize_for_artist_finder,
           :tags => tags,
+          :normalized_tags => normalized_tags,
           :translated_tags => translated_tags,
-          :unique_id => unique_id,
           :artist_commentary => {
             :title => artist_commentary_title,
             :description => artist_commentary_desc,
             :dtext_title => dtext_artist_commentary_title,
             :dtext_description => dtext_artist_commentary_desc,
-          }
+          },
+          :api_response => api_response.to_h,
         }
       end
 

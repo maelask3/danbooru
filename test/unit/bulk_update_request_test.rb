@@ -13,6 +13,28 @@ class BulkUpdateRequestTest < ActiveSupport::TestCase
       CurrentUser.ip_addr = nil
     end
 
+    context "#estimate_update_count" do
+      setup do
+        FactoryBot.create(:post, tag_string: "aaa")
+        FactoryBot.create(:post, tag_string: "bbb")
+        FactoryBot.create(:post, tag_string: "ccc")
+        FactoryBot.create(:post, tag_string: "ddd")
+        FactoryBot.create(:post, tag_string: "eee")
+
+        @script = "create alias aaa -> 000\n" +
+          "create implication bbb -> 111\n" +
+          "remove alias ccc -> 222\n" +
+          "remove implication ddd -> 333\n" +
+          "mass update eee -> 444\n"
+      end
+
+      subject { BulkUpdateRequest.new(script: @script) }
+
+      should "return the correct count" do
+        assert_equal(3, subject.estimate_update_count)
+      end
+    end
+
     context "on approval" do
       setup do
         @script = %q(
@@ -126,7 +148,12 @@ class BulkUpdateRequestTest < ActiveSupport::TestCase
         @req.forum_updater.stubs(:update).raises(RuntimeError.new("blah"))
         assert_raises(RuntimeError) { @req.approve!(@admin) }
 
-        assert_equal("pending", @req.reload.status)
+        # XXX Raises "Couldn't find BulkUpdateRequest without an ID". Possible
+        # rails bug? (cf rails #34637, #34504, #30167, #15018).
+        # @req.reload
+
+        @req = BulkUpdateRequest.find(@req.id)
+        assert_equal("pending", @req.status)
       end
 
       should "downcase the text" do

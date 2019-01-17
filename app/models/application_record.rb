@@ -178,7 +178,7 @@ class ApplicationRecord < ActiveRecord::Base
     protected
 
     def hidden_attributes
-      [:uploader_ip_addr, :updater_ip_addr, :creator_ip_addr, :ip_addr]
+      [:uploader_ip_addr, :updater_ip_addr, :creator_ip_addr]
     end
 
     def method_attributes
@@ -243,7 +243,6 @@ class ApplicationRecord < ActiveRecord::Base
             if rec.creator_id.nil?
               rec.creator_id = CurrentUser.id
               rec.creator_ip_addr = CurrentUser.ip_addr if rec.respond_to?(:creator_ip_addr=)
-              rec.ip_addr = CurrentUser.ip_addr if rec.respond_to?(:ip_addr=)
             end
           end
 
@@ -263,6 +262,37 @@ class ApplicationRecord < ActiveRecord::Base
 
           define_method :updater_name do
             User.id_to_name(updater_id)
+          end
+        end
+      end
+    end
+  end
+
+  concerning :AttributeMethods do
+    class_methods do
+      # Defines `<attribute>_string`, `<attribute>_string=`, and `<attribute>=`
+      # methods for converting an array attribute to or from a string.
+      #
+      # The `<attribute>=` setter parses strings into an array using the
+      # `parse` regex. The resulting strings can be converted to another type
+      # with the `cast` option.
+      def array_attribute(name, parse: /[^[:space:]]+/, cast: :itself)
+        define_method "#{name}_string" do
+          send(name).join(" ")
+        end
+
+        define_method "#{name}_string=" do |value|
+          raise ArgumentError, "#{name} must be a String" unless value.respond_to?(:to_str)
+          send("#{name}=", value)
+        end
+
+        define_method "#{name}=" do |value|
+          if value.respond_to?(:to_str)
+            super value.to_str.scan(parse).map(&cast)
+          elsif value.respond_to?(:to_a)
+            super value.to_a
+          else
+            raise ArgumentError, "#{name} must be a String or an Array"
           end
         end
       end
