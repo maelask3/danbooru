@@ -6,6 +6,7 @@ module Sources
       setup do
         @site_1 = Sources::Strategies.find("http://lohas.nicoseiga.jp/o/910aecf08e542285862954017f8a33a8c32a8aec/1433298801/4937663")
         @site_2 = Sources::Strategies.find("http://seiga.nicovideo.jp/seiga/im4937663")
+        @site_3 = Sources::Strategies.find("http://seiga.nicovideo.jp/watch/mg376206")
       end
 
       should "get the profile" do
@@ -34,11 +35,11 @@ module Sources
       end
 
       should "get the tags" do
-        assert(@site_1.tags.size > 0)
+        assert_not(@site_1.tags.empty?)
         first_tag = @site_1.tags.first
         assert_equal(["アニメ", "https://seiga.nicovideo.jp/tag/%E3%82%A2%E3%83%8B%E3%83%A1"], first_tag)
 
-        assert(@site_2.tags.size > 0)
+        assert_not(@site_2.tags.empty?)
         first_tag = @site_2.tags.first
         assert_equal(["アニメ", "https://seiga.nicovideo.jp/tag/%E3%82%A2%E3%83%8B%E3%83%A1"], first_tag)
       end

@@ -13,10 +13,6 @@ class UserPresenter
     user.created_at.strftime("%Y-%m-%d")
   end
 
-  def level
-    user.level_string
-  end
-
   def ban_reason
     if user.is_banned?
       "#{user.recent_ban.reason}; expires #{user.recent_ban.expires_at} (#{user.bans.count} bans total)"
@@ -55,9 +51,9 @@ class UserPresenter
     slots_tooltip = "Next free slot: #{template.time_ago_in_words(user.next_free_upload_slot)}"
     limit_tooltip = <<-EOS.strip_heredoc
       Base: #{user.base_upload_limit}
-      Del. Rate: #{"%.2f" % user.adjusted_deletion_confidence}
-      Multiplier: (1 - (#{"%.2f" % user.adjusted_deletion_confidence} / 15)) = #{user.upload_limit_multiplier}
-      Upload Limit: #{user.base_upload_limit} * #{"%.2f" % user.upload_limit_multiplier} = #{user.max_upload_limit}
+      Del. Rate: #{format("%.2f", user.adjusted_deletion_confidence)}
+      Multiplier: (1 - (#{format("%.2f", user.adjusted_deletion_confidence)} / 15)) = #{user.upload_limit_multiplier}
+      Upload Limit: #{user.base_upload_limit} * #{format("%.2f", user.upload_limit_multiplier)} = #{user.max_upload_limit}
     EOS
 
     %{<abbr title="#{slots_tooltip}">#{user.used_upload_slots}</abbr> / <abbr title="#{limit_tooltip}">#{user.max_upload_limit}</abbr>}.html_safe
@@ -84,7 +80,7 @@ class UserPresenter
   end
 
   def deleted_upload_count(template)
-    template.link_to(Post.for_user(user.id).deleted.count, template.posts_path(:tags => "status:deleted user:#{user.name}"))
+    template.link_to(user.posts.deleted.count, template.posts_path(:tags => "status:deleted user:#{user.name}"))
   end
 
   def favorite_count(template)
@@ -105,7 +101,7 @@ class UserPresenter
   end
 
   def post_version_count(template)
-    template.link_to(user.post_update_count, template.post_versions_path(:lr => user.id, :search => {:updater_id => user.id}))
+    template.link_to(user.post_update_count, template.post_versions_path(:search => {:updater_id => user.id}))
   end
 
   def note_version_count(template)
@@ -168,18 +164,8 @@ class UserPresenter
       []
     end
   end
-  
+
   def previous_names(template)
     user.user_name_change_requests.map { |req| template.link_to req.original_name, req }.join(", ").html_safe
-  end
-
-  def custom_css
-    user.custom_style.to_s.split(/\r\n|\r|\n/).map do |line|
-      if line =~ /\A@import/
-        line
-      else
-        line.gsub(/([^[:space:]])[[:space:]]*(?:!important)?[[:space:]]*(;|})/, "\\1 !important\\2")
-      end
-    end.join("\n")
   end
 end

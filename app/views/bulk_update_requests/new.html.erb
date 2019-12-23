@@ -1,5 +1,5 @@
 <div id="c-bulk-update-requests">
-  <div id="a-new">
+  <div id="a-new" class="fixed-width-container">
     <h1>New Bulk Update Request</h1>
 
     <%= render "form" %>
@@ -7,7 +7,3 @@
 </div>
 
 <%= render "secondary_links" %>
-
-<% content_for(:page_title) do %>
-  New Bulk Update Request - <%= Danbooru.config.app_name %>
-<% end %>

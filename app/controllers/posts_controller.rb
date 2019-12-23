@@ -1,27 +1,30 @@
 class PostsController < ApplicationController
   before_action :member_only, :except => [:show, :show_seq, :index, :home, :random]
   respond_to :html, :xml, :json
+  layout "sidebar"
 
   def index
     if params[:md5].present?
-      @post = Post.find_by_md5(params[:md5])
+      @post = Post.find_by!(md5: params[:md5])
       respond_with(@post) do |format|
         format.html { redirect_to(@post) }
       end
     else
-      @post_set = PostSets::Post.new(tag_query, params[:page], params[:limit], raw: params[:raw], random: params[:random], format: params[:format], read_only: params[:ro])
+      @post_set = PostSets::Post.new(tag_query, params[:page], params[:limit], raw: params[:raw], random: params[:random], format: params[:format])
       @posts = @post_set.posts
       respond_with(@posts) do |format|
         format.atom
-        format.xml do
-          render :xml => @posts.to_xml(:root => "posts")
-        end
       end
     end
   end
 
   def show
     @post = Post.find(params[:id])
+
+    @comments = @post.comments
+    @comments = @comments.includes(:creator)
+    @comments = @comments.includes(:votes) if CurrentUser.is_member?
+    @comments = @comments.visible(CurrentUser.user)
 
     include_deleted = @post.is_deleted? || (@post.parent_id.present? && @post.parent.is_deleted?) || CurrentUser.user.show_deleted_children?
     @parent_post_set = PostSets::PostRelationship.new(@post.parent_id, :include_deleted => include_deleted)
@@ -55,7 +58,7 @@ class PostsController < ApplicationController
     if @post.visible?
       @post.revert_to!(@version)
     end
-    
+
     respond_with(@post) do |format|
       format.js
     end
@@ -65,7 +68,7 @@ class PostsController < ApplicationController
     @post = Post.find(params[:id])
     @other_post = Post.find(params[:other_post_id].to_i)
     @post.copy_notes_to(@other_post)
-    
+
     if @post.errors.any?
       @error_message = @post.errors.full_messages.join("; ")
       render :json => {:success => false, :reason => @error_message}.to_json, :status => 400
@@ -88,7 +91,7 @@ class PostsController < ApplicationController
     respond_with_post_after_update(@post)
   end
 
-private
+  private
 
   def tag_query
     params[:tags] || (params[:post] && params[:post][:tags])
@@ -106,7 +109,7 @@ private
           render :template => "static/error", :status => 500
         else
           response_params = {:q => params[:tags_query], :pool_id => params[:pool_id], :favgroup_id => params[:favgroup_id]}
-          response_params.reject!{|key, value| value.blank?}
+          response_params.reject! {|key, value| value.blank?}
           redirect_to post_path(post, response_params)
         end
       end

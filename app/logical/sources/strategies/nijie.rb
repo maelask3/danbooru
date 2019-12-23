@@ -7,6 +7,8 @@
 # * https://pic05.nijie.info/nijie_picture/diff/main/559053_20180604023346_1.png (page: http://nijie.info/view_popup.php?id=265428#diff_2)
 # * https://pic04.nijie.info/nijie_picture/diff/main/287736_161475_20181112032855_1.png (page: http://nijie.info/view_popup.php?id=287736#diff_2)
 #
+# * https://pic.nijie.net/03/nijie_picture/236014_20170620101426_0.png (page: https://www.nijie.info/view.php?id=218856)
+#
 # Unhandled:
 #
 # * https://pic01.nijie.info/nijie_picture/20120211210359.jpg
@@ -48,6 +50,7 @@ module Sources
 
       # https://pic03.nijie.info/nijie_picture/28310_20131101215959.jpg
       # https://pic03.nijie.info/nijie_picture/236014_20170620101426_0.png
+      # http://pic.nijie.net/03/nijie_picture/829001_20190620004513_0.mp4
       # https://pic05.nijie.info/nijie_picture/diff/main/559053_20180604023346_1.png
       FILENAME1 = %r!(?<artist_id>\d+)_(?<timestamp>\d{14})(?:_\d+)?!i
 
@@ -57,11 +60,12 @@ module Sources
       # https://pic04.nijie.info/nijie_picture/diff/main/287736_161475_20181112032855_1.png
       FILENAME3 = %r!(?<illust_id>\d+)_(?<artist_id>\d+)_(?<timestamp>\d{14})_\d+!i
 
-      DIR = %r!(?:__rs_\w+/)?nijie_picture(?:/diff/main)?!
-      IMAGE_URL = %r!\Ahttps?://pic\d+\.nijie\.info/#{DIR}/#{Regexp.union(FILENAME1, FILENAME2, FILENAME3)}\.\w+\z!i
+      IMAGE_BASE_URL = %r!\Ahttps?://(?:pic\d+\.nijie\.info|pic\.nijie\.net)!i
+      DIR = %r!(?:\d+/)?(?:__rs_\w+/)?nijie_picture(?:/diff/main)?!
+      IMAGE_URL = %r!#{IMAGE_BASE_URL}/#{DIR}/#{Regexp.union(FILENAME1, FILENAME2, FILENAME3)}\.\w+\z!i
 
       def domains
-        ["nijie.info"]
+        ["nijie.info", "nijie.net"]
       end
 
       def site_name
@@ -74,7 +78,7 @@ module Sources
       end
 
       def image_urls
-        images = page&.search("div#gallery a > img").to_a.map do |img|
+        images = page&.search("div#gallery a > .mozamoza").to_a.map do |img|
           "https:#{img["src"]}"
         end
 
@@ -116,9 +120,11 @@ module Sources
       def tags
         links = page&.search("div#view-tag a") || []
 
-        links.select do |node|
+        search_links = links.select do |node|
           node["href"] =~ /search\.php/
-        end.map do |node|
+        end
+
+        search_links.map do |node|
           [node.inner_text, "https://nijie.info" + node.attr("href")]
         end
       end
@@ -126,8 +132,6 @@ module Sources
       def tag_name
         "nijie" + artist_id.to_s
       end
-
-    public
 
       def self.to_dtext(text)
         text = text.to_s.gsub(/\r\n|\r/, "<br>")
@@ -192,7 +196,7 @@ module Sources
               form['password'] = Danbooru.config.nijie_password
             end.click_button
           end
-          session = mech.cookie_jar.cookies.select{|c| c.name == "NIJIEIJIEID"}.first
+          session = mech.cookie_jar.cookies.select {|c| c.name == "NIJIEIJIEID"}.first
           Cache.put("nijie-session", session.value, 1.day) if session
         end
 
@@ -203,7 +207,6 @@ module Sources
         mech.cookie_jar.add(cookie)
 
         mech
-
       rescue Mechanize::ResponseCodeError => x
         if x.response_code.to_i == 429
           sleep(5)

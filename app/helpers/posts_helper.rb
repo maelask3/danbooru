@@ -23,7 +23,7 @@ module PostsHelper
 
   def missed_post_search_count_js
     return nil unless post_search_counts_enabled?
-    
+
     if params[:ms] == "1" && @post_set.post_count == 0 && @post_set.is_single_tag?
       session_id = session.id
       verifier = ActiveSupport::MessageVerifier.new(Danbooru.config.reportbooru_key, serializer: JSON, digest: "SHA256")
@@ -34,8 +34,8 @@ module PostsHelper
 
   def post_search_count_js
     return nil unless post_search_counts_enabled?
-    
-    if action_name == "index" && params[:page].nil?
+
+    if params[:action] == "index" && params[:page].nil?
       tags = Tag.scan_query(params[:tags]).sort.join(" ")
 
       if tags.present?
@@ -58,47 +58,17 @@ module PostsHelper
     return render("posts/partials/show/view_count", msg: msg)
   end
 
-  def common_searches_html(user)
-    return nil unless post_search_counts_enabled?
-    return nil unless user.is_platinum?
-    return nil unless user.enable_recent_searches?
-
-    key = "uid"
-    value = user.id
-    verifier = ActiveSupport::MessageVerifier.new(Danbooru.config.reportbooru_key, serializer: JSON, digest: "SHA256")
-    sig = verifier.generate("#{key},#{value}")
-    render("users/common_searches", user: user, sig: sig)
-  end
-
   def post_source_tag(post)
-    if post.source =~ %r!\Ahttp://img\d+\.pixiv\.net/img/([^\/]+)/!i
-      text = "pixiv/<wbr>#{wordbreakify($1)}".html_safe
-      source_search = "source:pixiv/#{$1}/"
-    elsif post.source =~ %r!\Ahttp://i\d\.pixiv\.net/img\d+/img/([^\/]+)/!i
-      text = "pixiv/<wbr>#{wordbreakify($1)}".html_safe
-      source_search = "source:pixiv/#{$1}/"
-    elsif post.source =~ %r{\Ahttps?://}i
-      text = post.normalized_source.sub(/\Ahttps?:\/\/(?:www\.)?/i, "")
-      text = truncate(text, length: 20)
-      source_search = "source:#{post.source.sub(/[^\/]*$/, "")}"
-    end
-
     # Only allow http:// and https:// links. Disallow javascript: links.
-    if post.normalized_source =~ %r!\Ahttps?://!i
-      source_link = link_to(text, post.normalized_source)
+    if post.source =~ %r!\Ahttps?://!i
+      external_link_to(post.normalized_source, strip: :subdomain) + "&nbsp;".html_safe + link_to("»", post.source, rel: "external noreferrer nofollow")
     else
-      source_link = truncate(post.source, :length => 100)
-    end
-
-    if CurrentUser.is_builder? && !source_search.blank?
-      source_link + "&nbsp;".html_safe + link_to("&raquo;".html_safe, posts_path(:tags => source_search), :rel => "nofollow")
-    else
-      source_link
+      post.source
     end
   end
 
   def post_favlist(post)
-    post.favorited_users.reverse_each.map{|user| link_to_user(user)}.join(", ").html_safe
+    post.favorited_users.reverse_each.map {|user| link_to_user(user)}.join(", ").html_safe
   end
 
   def has_parent_message(post, parent_post_set)
@@ -111,11 +81,11 @@ module PostsHelper
     sibling_count = parent_post_set.children.count - 1
     if sibling_count > 0
       html << " and has "
-      text = sibling_count == 1 ? "a sibling" : "#{sibling_count} siblings"
+      text = (sibling_count == 1) ? "a sibling" : "#{sibling_count} siblings"
       html << link_to(text, posts_path(:tags => "parent:#{post.parent_id}"))
     end
 
-    html << " (#{link_to("learn more", wiki_pages_path(:title => "help:post_relationships"))}) "
+    html << " (#{link_to_wiki "learn more", "help:post_relationships"}) "
 
     html << link_to("&laquo; hide".html_safe, "#", :id => "has-parent-relationship-preview-link")
 
@@ -126,10 +96,10 @@ module PostsHelper
     html = ""
 
     html << "This post has "
-    text = children_post_set.children.count == 1 ? "a child" : "#{children_post_set.children.count} children"
+    text = (children_post_set.children.count == 1) ? "a child" : "#{children_post_set.children.count} children"
     html << link_to(text, posts_path(:tags => "parent:#{post.id}"))
 
-    html << " (#{link_to("learn more", wiki_pages_path(:title => "help:post_relationships"))}) "
+    html << " (#{link_to_wiki "learn more", "help:post_relationships"}) "
 
     html << link_to("&laquo; hide".html_safe, "#", :id => "has-children-relationship-preview-link")
 
@@ -141,9 +111,9 @@ module PostsHelper
   end
 
   def is_pool_selected?(pool)
-    return false if params.has_key?(:q)
-    return false if params.has_key?(:favgroup_id)
-    return false if !params.has_key?(:pool_id)
+    return false if params.key?(:q)
+    return false if params.key?(:favgroup_id)
+    return false if !params.key?(:pool_id)
     return params[:pool_id].to_i == pool.id
   end
 

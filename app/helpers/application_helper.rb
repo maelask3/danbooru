@@ -8,12 +8,8 @@ module ApplicationHelper
 
   def wordbreakify(string)
     lines = string.scan(/.{1,10}/)
-    wordbreaked_string = lines.map{|str| h(str)}.join("<wbr>")
+    wordbreaked_string = lines.map {|str| h(str)}.join("<wbr>")
     raw(wordbreaked_string)
-  end
-
-  def pro_fontawesome_enabled?
-    request.domain =~ /donmai\.us/
   end
 
   def nav_link_to(text, url, **options)
@@ -36,66 +32,37 @@ module ApplicationHelper
     tag.li(link_to(text, url, id: "#{id}-link", **options), id: id, class: klass)
   end
 
-  def fast_link_to(text, link_params, options = {})
-    if options
-      attributes = options.map do |k, v|
-        %{#{k}="#{h(v)}"}
-      end.join(" ")
-    else
-      attributes = ""
-    end
-
-    if link_params.is_a?(Hash)
-      action = link_params.delete(:action)
-      controller = link_params.delete(:controller) || controller_name
-      id = link_params.delete(:id)
-
-      link_params = link_params.map {|k, v| "#{k}=#{u(v)}"}.join("&")
-
-      if link_params.present?
-        link_params = "?#{link_params}"
-      end
-
-      if id
-        url = "/#{controller}/#{action}/#{id}#{link_params}"
-      else
-        url = "/#{controller}/#{action}#{link_params}"
-      end
-    else
-      url = link_params
-    end
-
-    raw %{<a href="#{h(url)}" #{attributes}>#{text}</a>}
-  end
-
   def format_text(text, **options)
-    raw DTextRagel.parse(text, **options)
-  rescue DTextRagel::Error => e
-    raw ""
+    raw DText.format_text(text, **options)
   end
 
   def strip_dtext(text)
-    format_text(text, strip: true)
+    DText.strip_dtext(text)
   end
 
   def error_messages_for(instance_name)
     instance = instance_variable_get("@#{instance_name}")
 
-    if instance && instance.errors.any?
+    if instance&.errors&.any?
       %{<div class="error-messages ui-state-error ui-corner-all"><strong>Error</strong>: #{instance.__send__(:errors).full_messages.join(", ")}</div>}.html_safe
     else
       ""
     end
   end
 
-  def time_tag(content, time)
+  def time_tag(content, time, **options)
     datetime = time.strftime("%Y-%m-%dT%H:%M%:z")
 
-    content_tag(:time, content || datetime, :datetime => datetime, :title => time.to_formatted_s)
+    tag.time content || datetime, datetime: datetime, title: time.to_formatted_s, **options
   end
 
   def humanized_duration(from, to)
-    duration = distance_of_time_in_words(from, to)
+    if to - from > 10.years
+      duration = "forever"
+    else
+      duration = distance_of_time_in_words(from, to)
+    end
+
     datetime = from.iso8601 + "/" + to.iso8601
     title = "#{from.strftime("%Y-%m-%d %H:%M")} to #{to.strftime("%Y-%m-%d %H:%M")}"
 
@@ -104,11 +71,24 @@ module ApplicationHelper
 
   def time_ago_in_words_tagged(time, compact: false)
     if time.past?
-      text = time_ago_in_words(time) + " ago"
-      text = text.gsub(/almost|about|over/, "") if compact
-      raw time_tag(text, time)
+      if compact
+        text = time_ago_in_words(time)
+        text = text.gsub(/almost|about|over/, "").strip
+        text = text.gsub(/less than a/, "<1")
+        text = text.gsub(/ minutes?/, "m")
+        text = text.gsub(/ hours?/, "h")
+        text = text.gsub(/ days?/, "d")
+        text = text.gsub(/ months?/, "mo")
+        text = text.gsub(/ years?/, "y")
+        klass = "compact-timestamp"
+      else
+        text = time_ago_in_words(time) + " ago"
+        klass = ""
+      end
+
+      time_tag(text, time, class: klass)
     else
-      raw time_tag("in " + distance_of_time_in_words(Time.now, time), time)
+      time_tag("in " + distance_of_time_in_words(Time.now, time), time)
     end
   end
 
@@ -116,29 +96,34 @@ module ApplicationHelper
     time_tag(time.strftime("%Y-%m-%d %H:%M"), time)
   end
 
-  def external_link_to(url, truncate: nil, strip_scheme: false, link_options: {})
-    text = url
-    text = text.gsub(%r!\Ahttps?://!i, "") if strip_scheme
+  def external_link_to(url, text = url, truncate: nil, strip: false, **link_options)
+    text = text.gsub(%r!\Ahttps?://!i, "") if strip == :scheme
+    text = text.gsub(%r!\Ahttps?://(?:www\.)?!i, "") if strip == :subdomain
     text = text.truncate(truncate) if truncate
 
     if url =~ %r!\Ahttps?://!i
-      link_to text, url, {rel: :nofollow}.merge(link_options)
+      link_to text, url, rel: "external noreferrer nofollow", **link_options
     else
       url
     end
   end
 
   def link_to_ip(ip)
-    link_to ip, moderator_ip_addrs_path(:search => {:ip_addr => ip})
+    link_to ip, ip_addresses_path(search: { ip_addr: ip, group_by: "user" })
   end
 
   def link_to_search(search)
     link_to search, posts_path(tags: search)
   end
 
-  def link_to_wiki(*wiki_titles, **options)
+  def link_to_wiki(text, title = text, **options)
+    title = "~#{title}" if title =~ /\A\d+\z/
+    link_to text, wiki_page_path(title), class: "wiki-link", **options
+  end
+
+  def link_to_wikis(*wiki_titles, last_word_connector: ", or", **options)
     links = wiki_titles.map do |title|
-      link_to title.tr("_", " "), wiki_pages_path(title: title)
+      link_to_wiki title.tr("_", " "), title
     end
 
     to_sentence(links, **options)
@@ -147,12 +132,12 @@ module ApplicationHelper
   def link_to_user(user, options = {})
     return "anonymous" if user.blank?
 
-    user_class = user.level_class
-    user_class = user_class + " user-post-approver" if user.can_approve_posts?
-    user_class = user_class + " user-post-uploader" if user.can_upload_free?
-    user_class = user_class + " user-super-voter" if user.is_super_voter?
-    user_class = user_class + " user-banned" if user.is_banned?
-    user_class = user_class + " with-style" if CurrentUser.user.style_usernames?
+    user_class = "user-#{user.level_string.downcase}"
+    user_class += " user-post-approver" if user.can_approve_posts?
+    user_class += " user-post-uploader" if user.can_upload_free?
+    user_class += " user-super-voter" if user.is_super_voter?
+    user_class += " user-banned" if user.is_banned?
+    user_class += " with-style" if CurrentUser.user.style_usernames?
     if options[:raw_name]
       name = user.name
     else
@@ -194,18 +179,31 @@ module ApplicationHelper
     tag.input value: "Preview", type: "button", class: "dtext-preview-button", "data-input-id": input_id, "data-preview-id": preview_id
   end
 
-  def search_field(method, label: method.titleize, hint: nil, value: nil, **attributes)
-    content_tag(:div, class: "input") do
-      label_html = label_tag("search_#{method}", label)
-      input_html = text_field_tag(method, value, id: "search_#{method}", name: "search[#{method}]", **attributes)
-      hint_html = hint.present? ? content_tag(:p, hint, class: "hint") : ""
-
-      label_html + input_html + hint_html
+  def quick_search_form_for(attribute, url, name, autocomplete: nil, &block)
+    tag.li do
+      search_form_for(url, classes: "quick-search-form one-line-form") do |f|
+        out  = f.input attribute, label: false, placeholder: "Search #{name}", input_html: { id: nil, "data-autocomplete": autocomplete }
+        out += tag.input type: :hidden, name: :redirect, value: 1
+        out += capture { yield f } if block_given?
+        out
+      end
     end
   end
 
+  def search_form_for(url, classes: "inline-form", method: :get, &block)
+    defaults = { required: false }
+    html_options = { autocomplete: "off", class: "search-form #{classes}" }
+
+    simple_form_for(:search, method: method, url: url, defaults: defaults, html: html_options, &block)
+  end
+
+  def table_for(*options, &block)
+    table = TableBuilder.new(*options, &block)
+    render "table_builder/table", table: table
+  end
+
   def body_attributes(user = CurrentUser.user)
-    attributes = [:id, :name, :level, :level_string, :can_approve_posts?, :can_upload_free?]
+    attributes = %i[id name level level_string theme] + User::BOOLEAN_ATTRIBUTES.map(&:to_sym)
     attributes += User::Roles.map { |role| :"is_#{role}?" }
 
     controller_param = params[:controller].parameterize.dasherize
@@ -217,6 +215,7 @@ module ApplicationHelper
       data: {
         controller: controller_param,
         action: action_param,
+        layout: controller.class.send(:_layout),
         **data_attributes_for(user, "user", attributes)
       }
     }
@@ -230,15 +229,35 @@ module ApplicationHelper
       [:"#{prefix}-#{name}", value]
     end.to_h
   end
-  
-protected
+
+  def page_title
+    if content_for(:page_title).present?
+      content_for(:page_title)
+    elsif params[:action] == "index"
+      "#{params[:controller].titleize} - #{Danbooru.config.app_name}"
+    elsif params[:action] == "show"
+      "#{params[:controller].singularize.titleize} - #{Danbooru.config.app_name}"
+    elsif params[:action] == "new"
+      "New #{params[:controller].singularize.titleize} - #{Danbooru.config.app_name}"
+    elsif params[:action] == "edit"
+      "Edit #{params[:controller].singularize.titleize} - #{Danbooru.config.app_name}"
+    elsif params[:action] == "search"
+      "Search #{params[:controller].titleize} - #{Danbooru.config.app_name}"
+    else
+      "#{Danbooru.config.app_name}/#{params[:controller]}"
+    end
+  end
+
+  def show_moderation_notice?
+    CurrentUser.can_approve_posts? && (cookies[:moderated].blank? || Time.at(cookies[:moderated].to_i) < 72.hours.ago)
+  end
+
+  protected
+
   def nav_link_match(controller, url)
     url =~ case controller
-    when "sessions", "users", "maintenance/user/login_reminders", "maintenance/user/password_resets", "admin/users"
+    when "sessions", "users", "maintenance/user/password_resets", "admin/users"
       /^\/(session|users)/
-
-    when "forum_posts"
-      /^\/forum_topics/
 
     when "comments"
       /^\/comments/
@@ -261,7 +280,7 @@ protected
     when "moderator/dashboards"
       /^\/moderator/
 
-    when "tag_aliases", "tag_alias_corrections", "tag_alias_requests"
+    when "tag_aliases", "tag_alias_requests"
       /^\/tag_aliases/
 
     when "tag_implications", "tag_implication_requests"

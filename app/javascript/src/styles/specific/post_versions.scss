@@ -1,9 +1,18 @@
-@import "../base/000_vars.scss";
+body.c-post-versions.a-index {
+  #subnav-undo-selected-link {
+    display: none;
+  }
 
-div#c-post-versions {
-  div#a-index {
-    tr.hilite {
-      background: $highlight_color;
-    }
+  .post-version-select-column {
+    min-width: 2em;
+  }
+
+  .advanced-search-link {
+    margin: 0 1em;
+  }
+
+  #p-revert-listing {
+    display: flex;
+    table#post-versions-table { flex: 1; }
   }
 }

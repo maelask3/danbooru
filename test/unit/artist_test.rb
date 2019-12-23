@@ -19,7 +19,7 @@ class ArtistTest < ActiveSupport::TestCase
 
   context "An artist" do
     setup do
-      user = Timecop.travel(1.month.ago) {FactoryBot.create(:user)}
+      user = travel_to(1.month.ago) {FactoryBot.create(:user)}
       CurrentUser.user = user
       CurrentUser.ip_addr = "127.0.0.1"
     end
@@ -39,7 +39,7 @@ class ArtistTest < ActiveSupport::TestCase
       @artist = Artist.create(name: "blah", url_string: "-http://monet.com\nhttp://monet.com")
       assert_equal(1, @artist.urls.count)
       assert_equal(["-http://monet.com"], @artist.urls.map(&:to_s))
-      refute(@artist.urls[0].is_active?)      
+      refute(@artist.urls[0].is_active?)
     end
 
     should "allow deactivating a url" do
@@ -62,21 +62,6 @@ class ArtistTest < ActiveSupport::TestCase
       should_not allow_value("-blah").for(:name)
       should_not allow_value("_").for(:name)
       should_not allow_value("").for(:name)
-    end
-
-    context "with a matching tag alias" do
-      setup do
-        @tag_alias = FactoryBot.create(:tag_alias, :antecedent_name => "aaa", :consequent_name => "bbb")
-        @artist = FactoryBot.create(:artist, :name => "aaa")
-      end
-
-      should "know it has an alias" do
-        assert_equal(true, @artist.has_tag_alias?)
-      end
-
-      should "know its alias" do
-        assert_equal("bbb", @artist.tag_alias_name)
-      end
     end
 
     context "that has been banned" do
@@ -108,8 +93,9 @@ class ArtistTest < ActiveSupport::TestCase
       end
 
       should "create a new tag implication" do
+        perform_enqueued_jobs
         assert_equal(1, TagImplication.where(:antecedent_name => "aaa", :consequent_name => "banned_artist").count)
-        assert_equal("aaa banned_artist", @post.tag_string)
+        assert_equal("aaa banned_artist", @post.reload.tag_string)
       end
 
       should "set the approver of the banned_artist implication" do
@@ -126,18 +112,6 @@ class ArtistTest < ActiveSupport::TestCase
       assert_equal("testing", artist.notes)
       assert_equal("testing", artist.wiki_page.body)
       assert_equal(artist.name, artist.wiki_page.title)
-    end
-
-    context "when a wiki page with the same name already exists" do
-      setup do
-        @wiki_page = FactoryBot.create(:wiki_page, :title => "aaa")
-        @artist = FactoryBot.build(:artist, :name => "aaa")
-      end
-
-      should "not validate" do
-        @artist.save
-        assert_equal(["Name conflicts with a wiki page"], @artist.errors.full_messages)
-      end
     end
 
     should "update the wiki page when notes are assigned" do
@@ -241,7 +215,6 @@ class ArtistTest < ActiveSupport::TestCase
 
     context "when finding deviantart artists" do
       setup do
-        skip "DeviantArt API keys not set" unless Danbooru.config.deviantart_client_id.present?
         FactoryBot.create(:artist, :name => "artgerm", :url_string => "http://artgerm.deviantart.com/")
         FactoryBot.create(:artist, :name => "trixia",  :url_string => "http://trixdraws.deviantart.com/")
       end
@@ -264,7 +237,7 @@ class ArtistTest < ActiveSupport::TestCase
 
     context "when finding pixiv artists" do
       setup do
-        FactoryBot.create(:artist, :name => "masao",:url_string => "http://www.pixiv.net/member.php?id=32777")
+        FactoryBot.create(:artist, :name => "masao", :url_string => "http://www.pixiv.net/member.php?id=32777")
         FactoryBot.create(:artist, :name => "bkub", :url_string => "http://www.pixiv.net/member.php?id=9948")
         FactoryBot.create(:artist, :name => "ryuura", :url_string => "http://www.pixiv.net/member.php?id=8678371")
       end
@@ -324,7 +297,7 @@ class ArtistTest < ActiveSupport::TestCase
       setup do
         skip "Twitter key is not set" unless Danbooru.config.twitter_api_key
         FactoryBot.create(:artist, :name => "hammer_(sunset_beach)", :url_string => "http://twitter.com/hamaororon")
-        FactoryBot.create(:artist, :name => "haruyama_kazunori",  :url_string => "https://twitter.com/kazuharoom")
+        FactoryBot.create(:artist, :name => "haruyama_kazunori", :url_string => "https://twitter.com/kazuharoom")
       end
 
       should "find the correct artist for twitter.com sources" do
@@ -435,7 +408,6 @@ class ArtistTest < ActiveSupport::TestCase
       cat_or_fish = FactoryBot.create(:artist, :name => "cat_or_fish")
       yuu = FactoryBot.create(:artist, :name => "yuu", :group_name => "cat_or_fish")
 
-      assert_equal("yuu", cat_or_fish.member_names)
       assert_not_nil(Artist.search(:group_name => "cat_or_fish").first)
       assert_not_nil(Artist.search(:any_name_matches => "cat_or_fish").first)
       assert_not_nil(Artist.search(:any_name_matches => "/cat/").first)
@@ -469,7 +441,7 @@ class ArtistTest < ActiveSupport::TestCase
 
       assert_difference("ArtistVersion.count") do
         artist.other_names = "xxx"
-        Timecop.travel(1.day.from_now) do
+        travel(1.day) do
           artist.save
         end
       end
@@ -481,20 +453,36 @@ class ArtistTest < ActiveSupport::TestCase
       assert_equal(%w[yyy], artist.other_names)
     end
 
-    should "update the category of the tag when created" do
-      tag = FactoryBot.create(:tag, :name => "abc")
-      artist = FactoryBot.create(:artist, :name => "abc")
-      tag.reload
-      assert_equal(Tag.categories.artist, tag.category)
+    context "when creating" do
+      should "create a new artist tag if one does not already exist" do
+        FactoryBot.create(:artist, name: "bkub")
+        assert(Tag.exists?(name: "bkub", category: Tag.categories.artist))
+      end
+
+      should "change the tag to an artist tag if it was a gentag" do
+        tag = FactoryBot.create(:tag, name: "abc", category: Tag.categories.general)
+        artist = FactoryBot.create(:artist, name: "abc")
+
+        assert_equal(Tag.categories.artist, tag.reload.category)
+      end
+
+      should "not allow creating artist entries for non-artist tags" do
+        tag = FactoryBot.create(:tag, name: "touhou", category: Tag.categories.copyright)
+        artist = FactoryBot.build(:artist, name: "touhou")
+
+        assert(artist.invalid?)
+        assert_match(/'touhou' is a copyright tag/, artist.errors.full_messages.join)
+      end
     end
 
-    should "update the category of the tag when renamed" do
-      tag = FactoryBot.create(:tag, :name => "def")
-      artist = FactoryBot.create(:artist, :name => "abc")
-      artist.name = "def"
-      artist.save
-      tag.reload
-      assert_equal(Tag.categories.artist, tag.category)
+    context "when renaming" do
+      should "change the new tag to an artist tag if it was a gentag" do
+        tag = FactoryBot.create(:tag, name: "def", category: Tag.categories.general)
+        artist = FactoryBot.create(:artist, name: "abc")
+        artist.update(name: "def")
+
+        assert_equal(Tag.categories.artist, tag.reload.category)
+      end
     end
 
     context "when saving" do

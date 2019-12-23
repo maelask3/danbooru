@@ -1,16 +1,7 @@
 class UserDeletion
-  class ValidationError < Exception ; end
+  class ValidationError < Exception; end
 
   attr_reader :user, :password
-
-  def self.remove_favorites_for(user_id)
-    user = User.find(user_id)
-    Post.without_timeout do
-      Post.raw_tag_match("fav:#{user_id}").where("true /* UserDeletion.remove_favorites_for */").find_each do |post|
-        Favorite.remove(post: post, user: user)
-      end
-    end
-  end
 
   def initialize(user, password)
     @user = user
@@ -27,10 +18,10 @@ class UserDeletion
     create_mod_action
   end
 
-private
-  
+  private
+
   def create_mod_action
-    ModAction.log("user ##{user.id} deleted",:user_delete)
+    ModAction.log("user ##{user.id} deleted", :user_delete)
   end
 
   def clear_saved_searches
@@ -41,7 +32,6 @@ private
     user.email = nil
     user.last_logged_in_at = nil
     user.last_forum_read_at = nil
-    user.recent_tags = ''
     user.favorite_tags = ''
     user.blacklisted_tags = ''
     user.hide_deleted_posts = false
@@ -59,15 +49,13 @@ private
   end
 
   def remove_favorites
-    UserDeletion.delay(:queue => "default").remove_favorites_for(user.id)
+    DeleteFavoritesJob.perform_later(user)
   end
 
   def rename
     name = "user_#{user.id}"
     n = 0
-    while User.where(:name => name).exists? && (n < 10)
-      name += "~"
-    end
+    name += "~" while User.where(:name => name).exists? && (n < 10)
 
     if n == 10
       raise ValidationError.new("New name could not be found")

@@ -1,6 +1,6 @@
 set :user, "danbooru"
 set :rails_env, "production"
-server "192.168.1.222", :roles => %w(web app db), :primary => true, :user => "danbooru"
+server "192.168.122.191", :roles => %w(web app db), :primary => true
 
-set :linked_files, fetch(:linked_files, []).push(".env.production")
-set :rbenv_path, "/home/danbooru/.rbenv"
+set :delayed_job_workers, 12
+append :linked_files, ".env.production"

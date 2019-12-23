@@ -1,14 +1,7 @@
 import Cookie from './cookie'
-import Utility from './utility'
+import CurrentUser from './current_user'
 
 $(function() {
-  // Account notices
-  $("#hide-sign-up-notice").on("click.danbooru", function(e) {
-    $("#sign-up-notice").hide();
-    Cookie.put("hide_sign_up_notice", "1", 7);
-    e.preventDefault();
-  });
-
   $("#hide-upgrade-account-notice").on("click.danbooru", function(e) {
     $("#upgrade-account-notice").hide();
     Cookie.put('hide_upgrade_account_notice', '1', 7);
@@ -28,16 +21,10 @@ $(function() {
     e.preventDefault();
   });
 
-  $("#desktop-version-link a").on("click.danbooru", function(e) {
+  $("#desktop-version-link a").on("click.danbooru", async function(e) {
     e.preventDefault();
-    $.ajax("/users/" + Utility.meta("current-user-id") + ".json", {
-      method: "PUT",
-      data: {
-        "user[disable_responsive_mode]": "true"
-      }
-    }).then(function() {
-      location.reload();
-    });
+    await CurrentUser.update({ disable_responsive_mode: true });
+    location.reload();
   });
 });
 

@@ -1,30 +1,26 @@
-<div id="c-wiki-pages">
-  <div id="a-new">
-    <%= render "sidebar" %>
+<%= render "sidebar" %>
 
-    <section id="content">
-      <h1>New Wiki Page</h1>
+<% content_for(:content) do %>
+  <h1>New Wiki Page</h1>
 
-      <% if @wiki_page.title.present? %>
-        <div class="ui-corner-all ui-state-highlight notice">
-          This wiki page does not yet exist. The form below will allow you to create a new page for <%= @wiki_page.title %>. It will act as an explanation on how to use the tag for other users on the site.
-        </div>
-      <% end %>
+  <% if @wiki_page.title.present? %>
+    <div class="notice notice-info notice-small" id="new-wiki-page-notice">
+      This wiki page does not yet exist. The form below will allow you to create a new page for <%= @wiki_page.title %>. It will act as an explanation on how to use the tag for other users on the site.
+    </div>
+  <% end %>
 
-      <%= render "form" %>
+  <%= error_messages_for("wiki_page") %>
 
-      <%= wiki_page_alias_and_implication_list(@wiki_page)%>
+  <%= simple_form_for(@wiki_page) do |f| %>
+    <%= f.input :title, error: false, input_html: { data: { autocomplete: "tag" } } %>
+    <%= f.input :other_names_string, as: :text, input_html: { size: "30x1" }, label: "Other names (#{link_to_wiki "help", "help:translated_tags"})".html_safe, hint: "Names used for this tag on other sites such as Pixiv. Separate with spaces." %>
+    <%= dtext_field "wiki_page", "body" %>
+    <%= f.submit "Submit" %>
+    <%= dtext_preview_button "wiki_page", "body" %>
+  <% end %>
 
-      <%= wiki_page_post_previews(@wiki_page) %>
-
-      <div class="clearfix"></div>
-
-    </section>
-  </div>
-</div>
+  <%= wiki_page_alias_and_implication_list(@wiki_page)%>
+  <%= wiki_page_post_previews(@wiki_page) %>
+<% end %>
 
 <%= render "secondary_links" %>
-
-<% content_for(:page_title) do %>
-  New Wiki Page - <%= Danbooru.config.app_name %>
-<% end %>

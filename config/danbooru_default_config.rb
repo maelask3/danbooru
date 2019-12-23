@@ -1,10 +1,15 @@
-require 'socket'
-
 module Danbooru
+  module_function
+
   class Configuration
-    # The version of this Danbooru.
-    def version
-      "2.105.0"
+    # A secret key used to encrypt session cookies, among other things. If this
+    # token is changed, existing login sessions will become invalid. If this
+    # token is stolen, attackers will be able to forge session cookies and
+    # login as any user.
+    #
+    # Must be specified. Use `rake secret` to generate a random secret token.
+    def secret_key_base
+      ENV["SECRET_TOKEN"].presence || File.read(File.expand_path("~/.danbooru/secret_token"))
     end
 
     # The name of this Danbooru.
@@ -16,12 +21,12 @@ module Danbooru
       end
     end
 
-    def description
-      "Find good anime art fast"
+    def canonical_app_name
+      "Danbooru"
     end
 
-    def domain
-      "donmai.us"
+    def description
+      "Find good anime art fast"
     end
 
     # The canonical hostname of the site.
@@ -52,34 +57,21 @@ module Danbooru
       ForumTopic.where(title: "Upload Feedback Thread").first
     end
 
-    def upgrade_account_email
-      contact_email
+    # The ID of the "Curated" pool. If present, this pool will be updated daily with curated posts.
+    def curated_pool_id
+      nil
     end
 
     def source_code_url
-      "https://github.com/r888888888/danbooru"
+      "https://github.com/danbooru/danbooru"
     end
 
     def commit_url(hash)
       "#{source_code_url}/commit/#{hash}"
     end
 
-    def releases_url
-      "#{source_code_url}/releases"
-    end
-
     def issues_url
       "#{source_code_url}/issues"
-    end
-
-    # Stripped of any special characters.
-    def safe_app_name
-      app_name.gsub(/[^a-zA-Z0-9_-]/, "_")
-    end
-
-    # The default name to use for anyone who isn't logged in.
-    def default_guest_name
-      "Anonymous"
     end
 
     # This is a salt used to make dictionary attacks on account passwords harder.
@@ -94,20 +86,12 @@ module Danbooru
       # user.can_upload_free = false
       # user.is_super_voter = false
       #
-      # user.base_upload_limit = 10
       # user.comment_threshold = -1
       # user.blacklisted_tags = ["spoilers", "guro", "scat", "furry -rating:s"].join("\n")
       # user.default_image_size = "large"
       # user.per_page = 20
       # user.disable_tagged_filenames = false
       true
-    end
-
-    # What method to use to store images.
-    # local_flat: Store every image in one directory.
-    # local_hierarchy: Store every image in a hierarchical directory, based on the post's MD5 hash. On some file systems this may be faster.
-    def image_store
-      :local_flat
     end
 
     # Thumbnail size
@@ -129,11 +113,6 @@ module Danbooru
       300
     end
 
-    # List of memcached servers
-    def memcached_servers
-      %w(127.0.0.1:11211)
-    end
-
     # After a post receives this many comments, new comments will no longer bump the post in comment/index.
     def comment_threshold
       40
@@ -142,21 +121,6 @@ module Danbooru
     # Members cannot post more than X comments in an hour.
     def member_comment_limit
       2
-    end
-
-    # Members cannot change the category of pools with more than this many posts.
-    def pool_category_change_limit
-      100
-    end
-
-    # Whether safe mode should be enabled. Safe mode hides all non-rating:safe posts from view.
-    def enable_safe_mode?(request, user)
-      !!(request.host =~ /safe/ || request.params[:safe_mode] || user.enable_safe_mode?)
-    end
-
-    # Determines who can see ads.
-    def can_see_ads?(user)
-      !user.is_gold?
     end
 
     # Users cannot search for more than X regular tags at a time.
@@ -174,7 +138,7 @@ module Danbooru
 
     # Return true if the given tag shouldn't count against the user's tag search limit.
     def is_unlimited_tag?(tag)
-      !!(tag =~ /\A(-?status:deleted|rating:s.*|limit:.+)\z/i)
+      tag.match?(/\A(-?status:deleted|rating:s.*|limit:.+)\z/i)
     end
 
     # After this many pages, the paginator will switch to sequential mode.
@@ -207,6 +171,22 @@ module Danbooru
       1.week.ago
     end
 
+    # https://guides.rubyonrails.org/action_mailer_basics.html#action-mailer-configuration
+    # https://guides.rubyonrails.org/configuring.html#configuring-action-mailer
+    def mail_delivery_method
+      # :smtp
+      :sendmail
+    end
+
+    def mail_settings
+      {
+        # address: "example.com",
+        # user_name: "user",
+        # password: "pass",
+        # authentication: :login
+      }
+    end
+
     # Permanently redirect all HTTP requests to HTTPS.
     #
     # https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security
@@ -217,8 +197,8 @@ module Danbooru
         hsts: {
           expires: 1.year,
           preload: true,
-          subdomains: false,
-        },
+          subdomains: false
+        }
       }
     end
 
@@ -239,19 +219,6 @@ module Danbooru
       [server_host]
     end
 
-    # Names of other Danbooru servers.
-    def other_server_hosts
-      @other_server_hosts ||= all_server_hosts.reject {|x| x == server_host}
-    end
-
-    def remote_server_login
-      "danbooru"
-    end
-
-    def archive_server_login
-      "danbooru"
-    end
-
     # The method to use for storing image files.
     def storage_manager
       # Store files on the local filesystem.
@@ -259,17 +226,11 @@ module Danbooru
       # base_url - where to serve files from (default: http://#{hostname}/data)
       # hierarchical: false - store files in a single directory
       # hierarchical: true - store files in a hierarchical directory structure, based on the MD5 hash
-      StorageManager::Local.new(base_url: "#{CurrentUser.root_url}/data", base_dir: "#{Rails.root}/public/data", hierarchical: false)
+      StorageManager::Local.new(base_url: "#{CurrentUser.root_url}/data", base_dir: Rails.root.join("/public/data"), hierarchical: false)
 
       # Store files on one or more remote host(s). Configure SSH settings in
       # ~/.ssh_config or in the ssh_options param (ref: http://net-ssh.github.io/net-ssh/Net/SSH.html#method-c-start)
       # StorageManager::SFTP.new("i1.example.com", "i2.example.com", base_dir: "/mnt/backup", hierarchical: false, ssh_options: {})
-
-      # Store files in an S3 bucket. The bucket must already exist and be
-      # writable by you. Configure your S3 settings in aws_region and
-      # aws_credentials below, or in the s3_options param (ref:
-      # https://docs.aws.amazon.com/sdkforruby/api/Aws/S3/Client.html#initialize-instance_method)
-      # StorageManager::S3.new("my_s3_bucket", base_url: "https://my_s3_bucket.s3.amazonaws.com/", s3_options: {})
 
       # Select the storage method based on the post's id and type (preview, large, or original).
       # StorageManager::Hybrid.new do |id, md5, file_ext, type|
@@ -298,17 +259,11 @@ module Danbooru
       # Backup files to /mnt/backup on a remote system. Configure SSH settings
       # in ~/.ssh_config or in the ssh_options param (ref: http://net-ssh.github.io/net-ssh/Net/SSH.html#method-c-start)
       # StorageManager::SFTP.new("www.example.com", base_dir: "/mnt/backup", ssh_options: {})
-
-      # Backup files to an S3 bucket. The bucket must already exist and be
-      # writable by you. Configure your S3 settings in aws_region and
-      # aws_credentials below, or in the s3_options param (ref:
-      # https://docs.aws.amazon.com/sdkforruby/api/Aws/S3/Client.html#initialize-instance_method)
-      # StorageManager::S3.new("my_s3_bucket_name", s3_options: {})
     end
 
-#TAG CONFIGURATION
+    # TAG CONFIGURATION
 
-    #Full tag configuration info for all tags
+    # Full tag configuration info for all tags
     def full_tag_config_info
       @full_tag_category_mapping ||= {
         "general" => {
@@ -316,11 +271,10 @@ module Danbooru
           "short" => "gen",
           "extra" => [],
           "header" => %{<h1 class="general-tag-list">Tags</h1>},
-          "humanized" => nil,
           "relatedbutton" => "General",
           "css" => {
-            "color" => "$link_color",
-            "hover" => "$link_hover_color"
+            "color" => "var(--general-tag-color)",
+            "hover" => "var(--general-tag-hover-color)"
           }
         },
         "character" => {
@@ -328,16 +282,10 @@ module Danbooru
           "short" => "char",
           "extra" => ["ch"],
           "header" => %{<h2 class="character-tag-list">Characters</h2>},
-          "humanized" => {
-            "slice" => 5,
-            "exclusion" => [],
-            "regexmap" => /^(.+?)(?:_\(.+\))?$/,
-            "formatstr" => "%s"
-          },
           "relatedbutton" => "Characters",
           "css" => {
-            "color" => "#0A0",
-            "hover" => "#6B6"
+            "color" => "var(--character-tag-color)",
+            "hover" => "var(--character-tag-hover-color)"
           }
         },
         "copyright" => {
@@ -345,16 +293,10 @@ module Danbooru
           "short" => "copy",
           "extra" => ["co"],
           "header" => %{<h2 class="copyright-tag-list">Copyrights</h2>},
-          "humanized" => {
-            "slice" => 1,
-            "exclusion" => [],
-            "regexmap" => //,
-            "formatstr" => "(%s)"
-          },
           "relatedbutton" => "Copyrights",
           "css" => {
-            "color" => "#A0A",
-            "hover" => "#B6B"
+            "color" => "var(--copyright-tag-color)",
+            "hover" => "var(--copyright-tag-hover-color)"
           }
         },
         "artist" => {
@@ -362,16 +304,10 @@ module Danbooru
           "short" => "art",
           "extra" => [],
           "header" => %{<h2 class="artist-tag-list">Artists</h2>},
-          "humanized" => {
-            "slice" => 0,
-            "exclusion" => %w(banned_artist),
-            "regexmap" => //,
-            "formatstr" => "drawn by %s"
-          },
           "relatedbutton" => "Artists",
           "css" => {
-            "color" => "#A00",
-            "hover" => "#B66"
+            "color" => "var(--artist-tag-color)",
+            "hover" => "var(--artist-tag-hover-color)"
           }
         },
         "meta" => {
@@ -379,44 +315,33 @@ module Danbooru
           "short" => "meta",
           "extra" => [],
           "header" => %{<h2 class="meta-tag-list">Meta</h2>},
-          "humanized" => nil,
           "relatedbutton" => nil,
           "css" => {
-            "color" => "#F80",
-            "hover" => "#FA6"
+            "color" => "var(--meta-tag-color)",
+            "hover" => "var(--meta-tag-hover-color)"
           }
         }
       }
     end
 
-#TAG ORDERS
+    # TAG ORDERS
 
-    #Sets the order of the humanized essential tag string (models/post.rb)
-    def humanized_tag_category_list
-      @humanized_tag_category_list ||= ["character","copyright","artist"]
-    end
-
-    #Sets the order of the split tag header list (presenters/tag_set_presenter.rb)
+    # Sets the order of the split tag header list (presenters/tag_set_presenter.rb)
     def split_tag_header_list
-      @split_tag_header_list ||= ["copyright","character","artist","general","meta"]
+      @split_tag_header_list ||= ["copyright", "character", "artist", "general", "meta"]
     end
 
-    #Sets the order of the categorized tag string (presenters/post_presenter.rb)
+    # Sets the order of the categorized tag string (presenters/post_presenter.rb)
     def categorized_tag_list
-      @categorized_tag_list ||= ["copyright","character","artist","meta","general"]
+      @categorized_tag_list ||= ["copyright", "character", "artist", "meta", "general"]
     end
 
-    #Sets the order of the related tag buttons (javascripts/related_tag.js)
+    # Sets the order of the related tag buttons (javascripts/related_tag.js)
     def related_tag_button_list
-      @related_tag_button_list ||= ["general","artist","character","copyright"]
+      @related_tag_button_list ||= ["general", "artist", "character", "copyright"]
     end
 
-#END TAG
-
-    # If enabled, users must verify their email addresses.
-    def enable_email_verification?
-      false
-    end
+    # END TAG
 
     # Any custom code you want to insert into the default layout without
     # having to modify the templates.
@@ -454,15 +379,11 @@ module Danbooru
     end
 
     def can_user_see_post?(user, post)
-     if is_user_restricted?(user) && is_post_restricted?(post)
+      if is_user_restricted?(user) && is_post_restricted?(post)
         false
       else
         true
       end
-    end
-
-    def select_posts_visible_to_user(user, posts)
-      posts.select {|x| can_user_see_post?(user, x)}
     end
 
     def max_appeals_per_day
@@ -476,19 +397,21 @@ module Danbooru
       nil
     end
 
+    # DeviantArt login cookies. Login to DeviantArt and extract these from the browser.
+    # https://github.com/danbooru/danbooru/issues/4219
+    def deviantart_cookies
+      {
+        userinfo: "XXX",
+        auth_secure: "XXX",
+        auth: "XXX"
+      }.to_json
+    end
+
     def pixiv_login
       nil
     end
 
     def pixiv_password
-      nil
-    end
-
-    def tinami_login
-      nil
-    end
-
-    def tinami_password
       nil
     end
 
@@ -500,28 +423,11 @@ module Danbooru
       nil
     end
 
-    def pixa_login
-      nil
-    end
-
-    def pixa_password
-      nil
-    end
-
     def nijie_login
       nil
     end
 
     def nijie_password
-      nil
-    end
-
-    # Register at https://www.deviantart.com/developers/.
-    def deviantart_client_id
-      nil
-    end
-
-    def deviantart_client_secret
       nil
     end
 
@@ -546,7 +452,7 @@ module Danbooru
 
     # Should return true if the given tag should be suggested for removal in the post replacement dialog box.
     def remove_tag_after_replacement?(tag)
-      tag =~ /\A(?:replaceme|.*_sample|resized|upscaled|downscaled|md5_mismatch|jpeg_artifacts|corrupted_image|source_request)\z/i
+      tag =~ /\A(?:replaceme|.*_sample|resized|upscaled|downscaled|md5_mismatch|jpeg_artifacts|corrupted_image|source_request|non-web_source)\z/i
     end
 
     # Posts with these tags will be highlighted yellow in the modqueue.
@@ -559,13 +465,9 @@ module Danbooru
       %w[duplicate image_sample md5_mismatch resized upscaled downscaled]
     end
 
-    def shared_dir_path
-      "/var/www/danbooru2/shared"
-    end
-
     def stripe_secret_key
     end
-    
+
     def stripe_publishable_key
     end
 
@@ -579,7 +481,7 @@ module Danbooru
     # services will fail if you don't set a valid User-Agent.
     def http_headers
       {
-        "User-Agent" => "#{Danbooru.config.safe_app_name}/#{Danbooru.config.version}",
+        "User-Agent" => "#{Danbooru.config.canonical_app_name}/#{Rails.application.config.x.git_hash}"
       }
     end
 
@@ -587,7 +489,7 @@ module Danbooru
       # proxy example:
       # {http_proxyaddr: "", http_proxyport: "", http_proxyuser: nil, http_proxypass: nil}
       {
-        headers: Danbooru.config.http_headers,
+        headers: Danbooru.config.http_headers
       }
     end
 
@@ -640,11 +542,6 @@ module Danbooru
     def addthis_key
     end
 
-    # enable s3-nginx proxy caching
-    def use_s3_proxy?(post)
-      false
-    end
-
     # include essential tags in image urls (requires nginx/apache rewrites)
     def enable_seo_post_urls
       false
@@ -674,18 +571,7 @@ module Danbooru
     end
 
     # iqdbs options - see https://github.com/r888888888/iqdbs
-    def iqdbs_auth_key
-    end
-
     def iqdbs_server
-    end
-
-    # google api options
-    def google_api_project
-    end
-
-    def google_api_json_key_path
-      "/var/www/danbooru2/shared/config/google-key.json"
     end
 
     # AWS config options
@@ -703,36 +589,6 @@ module Danbooru
     def aws_secret_access_key
     end
 
-    def aws_ses_enabled?
-      false
-    end
-
-    def aws_ses_options
-      # {:smtp_server_name => "smtp server", :user_name => "user name", :ses_smtp_user_name => "smtp user name", :ses_smtp_password => "smtp password"}
-    end
-
-    def aws_s3_enabled?
-      false
-    end
-
-    # Used for backing up images to S3. Must be changed to your own S3 bucket.
-    def aws_s3_bucket_name
-      "danbooru"
-    end
-
-    def aws_sqs_enabled?
-      false
-    end
-
-    def aws_sqs_saved_search_url
-    end
-
-    def aws_sqs_reltagcalc_url
-    end
-
-    def aws_sqs_post_versions_url
-    end
-
     def aws_sqs_region
     end
 
@@ -740,15 +596,6 @@ module Danbooru
     end
 
     def aws_sqs_archives_url
-    end
-
-    def ccs_server
-    end
-
-    def ccs_key
-    end
-
-    def aws_sqs_cropper_url
     end
 
     # Use a recaptcha on the signup page to protect against spambots creating new accounts.
@@ -766,31 +613,30 @@ module Danbooru
     def enable_image_cropping
       true
     end
-    
+
     # Akismet API key. Used for Dmail spam detection. http://akismet.com/signup/
     def rakismet_key
     end
 
     def rakismet_url
+      "https://#{hostname}"
     end
 
-    # Cloudflare data
-    def cloudflare_email
+    # Cloudflare API token. Used to purge URLs from Cloudflare's cache when a
+    # post is replaced. The token must have 'zone.cache_purge' permissions.
+    # https://support.cloudflare.com/hc/en-us/articles/200167836-Managing-API-Tokens-and-Keys
+    def cloudflare_api_token
     end
 
+    # The Cloudflare zone ID. This is the domain that cached URLs will be purged from.
     def cloudflare_zone
-    end
-
-    def cloudflare_key
     end
 
     def recommender_server
     end
 
-    def recommender_key
-    end
-
     def redis_url
+      "redis://localhost:6379"
     end
   end
 
@@ -802,17 +648,11 @@ module Danbooru
     def method_missing(method, *args)
       var = ENV["DANBOORU_#{method.to_s.upcase.chomp("?")}"]
 
-      if var.present?
-        var
-      else
-        custom_configuration.send(method, *args)
-      end
+      var.presence || custom_configuration.send(method, *args)
     end
   end
 
   def config
-    @configuration ||= EnvironmentConfiguration.new
+    @config ||= EnvironmentConfiguration.new
   end
-
-  module_function :config
 end

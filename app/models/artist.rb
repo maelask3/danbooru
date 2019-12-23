@@ -1,25 +1,25 @@
 class Artist < ApplicationRecord
   extend Memoist
-  class RevertError < Exception ; end
+  class RevertError < Exception; end
 
   attr_accessor :url_string_changed
   array_attribute :other_names
+  api_attributes including: [:urls]
 
   before_validation :normalize_name
   before_validation :normalize_other_names
   after_save :create_version
-  after_save :categorize_tag
   after_save :update_wiki
   after_save :clear_url_string_changed
+  validate :validate_tag_category
   validates :name, tag_name: true, uniqueness: true
-  validate :validate_wiki, :on => :create
   belongs_to_creator
   has_many :members, :class_name => "Artist", :foreign_key => "group_name", :primary_key => "name"
   has_many :urls, :dependent => :destroy, :class_name => "ArtistUrl", :autosave => true
   has_many :versions, -> {order("artist_versions.id ASC")}, :class_name => "ArtistVersion"
   has_one :wiki_page, :foreign_key => "title", :primary_key => "name"
   has_one :tag_alias, :foreign_key => "antecedent_name", :primary_key => "name"
-  has_one :tag, :foreign_key => "name", :primary_key => "name"
+  belongs_to :tag, foreign_key: "name", primary_key: "name", default: -> { Tag.new(name: name, category: Tag.categories.artist) }
   attribute :notes, :string
 
   scope :active, -> { where(is_active: true) }
@@ -140,7 +140,7 @@ class Artist < ApplicationRecord
         "youtube.com/c", # https://www.youtube.com/c/serafleurArt
         "youtube.com/channel", # https://www.youtube.com/channel/UCfrCa2Y6VulwHD3eNd3HBRA
         "youtube.com/user", # https://www.youtube.com/user/148nasuka
-        "youtu.be", # http://youtu.be/gibeLKKRT-0
+        "youtu.be" # http://youtu.be/gibeLKKRT-0
       ]
 
       SITE_BLACKLIST_REGEXP = Regexp.union(SITE_BLACKLIST.map do |domain|
@@ -213,13 +213,13 @@ class Artist < ApplicationRecord
 
     def domains
       Cache.get("artist-domains-#{id}", 1.day) do
-        Post.raw_tag_match(name).pluck(:source).map do |x| 
-          begin
-            map_domain(Addressable::URI.parse(x).domain)
-          rescue Addressable::URI::InvalidURIError
-            nil
-          end
-        end.compact.inject(Hash.new(0)) {|h, x| h[x] += 1; h}.sort {|a, b| b[1] <=> a[1]}
+        domains = Post.raw_tag_match(name).pluck(:source).map do |x|
+          map_domain(Addressable::URI.parse(x).domain)
+        rescue Addressable::URI::InvalidURIError
+          nil
+        end
+
+        domains.compact.inject(Hash.new(0)) {|h, x| h[x] += 1; h}.sort {|a, b| b[1] <=> a[1]}
       end
     end
   end
@@ -247,14 +247,8 @@ class Artist < ApplicationRecord
     end
   end
 
-  module GroupMethods
-    def member_names
-      members.map(&:name).join(", ")
-    end
-  end
-
   module VersionMethods
-    def create_version(force=false)
+    def create_version(force = false)
       if saved_change_to_name? || url_string_changed || saved_change_to_is_active? || saved_change_to_is_banned? || saved_change_to_other_names? || saved_change_to_group_name? || saved_change_to_notes? || force
         if merge_version?
           merge_version
@@ -280,14 +274,7 @@ class Artist < ApplicationRecord
 
     def merge_version
       prev = versions.last
-      prev.update_attributes(
-        :name => name,
-        :urls => url_array,
-        :is_active => is_active,
-        :is_banned => is_banned,
-        :other_names => other_names,
-        :group_name => group_name
-      )
+      prev.update(name: name, urls: url_array, is_active: is_active, is_banned: is_banned, other_names: other_names, group_name: group_name)
     end
 
     def merge_version?
@@ -329,7 +316,9 @@ class Artist < ApplicationRecord
         artist = Artist.new(params)
       end
 
-      artist.tap(&:validate) # run before_validation callbacks to normalize the names
+      artist.normalize_name
+      artist.normalize_other_names
+      artist
     end
   end
 
@@ -389,31 +378,20 @@ class Artist < ApplicationRecord
         wiki_page.save
       end
     end
-
-    def validate_wiki
-      if WikiPage.titled(name).exists?
-        errors.add(:name, "conflicts with a wiki page")
-        return false
-      end
-    end
   end
 
   module TagMethods
-    def has_tag_alias?
-      TagAlias.active.exists?(["antecedent_name = ?", name])
-    end
-
-    def tag_alias_name
-      TagAlias.active.find_by_antecedent_name(name).consequent_name
-    end
-
     def category_name
       Tag.category_for(name)
     end
 
-    def categorize_tag
-      if new_record? || saved_change_to_name?
-        Tag.find_or_create_by_name("artist:#{name}")
+    def validate_tag_category
+      return unless is_active? && name_changed?
+
+      if tag.category_name == "General"
+        tag.update(category: Tag.categories.artist)
+      elsif tag.category_name != "Artist"
+        errors[:base] << "'#{name}' is a #{tag.category_name.downcase} tag; artist entries can only be created for artist tags"
       end
     end
   end
@@ -423,20 +401,16 @@ class Artist < ApplicationRecord
       Post.transaction do
         CurrentUser.without_safe_mode do
           ti = TagImplication.where(:antecedent_name => name, :consequent_name => "banned_artist").first
-          ti.destroy if ti
+          ti&.destroy
 
-          begin
-            Post.tag_match(name).where("true /* Artist.unban */").each do |post|
-              post.unban!
-              fixed_tags = post.tag_string.sub(/(?:\A| )banned_artist(?:\Z| )/, " ").strip
-              post.update_attributes(:tag_string => fixed_tags)
-            end
-          rescue Post::SearchError
-            # swallow
+          Post.tag_match(name).where("true /* Artist.unban */").each do |post|
+            post.unban!
+            fixed_tags = post.tag_string.sub(/(?:\A| )banned_artist(?:\Z| )/, " ").strip
+            post.update(tag_string: fixed_tags)
           end
 
           update_column(:is_banned, false)
-          ModAction.log("unbanned artist ##{id}",:artist_unban)
+          ModAction.log("unbanned artist ##{id}", :artist_unban)
         end
       end
     end
@@ -444,12 +418,8 @@ class Artist < ApplicationRecord
     def ban!
       Post.transaction do
         CurrentUser.without_safe_mode do
-          begin
-            Post.tag_match(name).where("true /* Artist.ban */").each do |post|
-              post.ban!
-            end
-          rescue Post::SearchError
-            # swallow
+          Post.tag_match(name).where("true /* Artist.ban */").each do |post|
+            post.ban!
           end
 
           # potential race condition but unlikely
@@ -459,17 +429,13 @@ class Artist < ApplicationRecord
           end
 
           update_column(:is_banned, true)
-          ModAction.log("banned artist ##{id}",:artist_ban)
+          ModAction.log("banned artist ##{id}", :artist_ban)
         end
       end
     end
   end
 
   module SearchMethods
-    def named(name)
-      where(name: normalize_name(name))
-    end
-
     def any_other_name_matches(regex)
       where(id: Artist.from("unnest(other_names) AS other_name").where("other_name ~ ?", regex))
     end
@@ -511,8 +477,7 @@ class Artist < ApplicationRecord
     def search(params)
       q = super
 
-      q = q.search_text_attribute(:name, params)
-      q = q.search_text_attribute(:group_name, params)
+      q = q.search_attributes(params, :is_active, :is_banned, :creator, :name, :group_name)
 
       if params[:any_other_name_like]
         q = q.any_other_name_like(params[:any_other_name_like])
@@ -528,17 +493,6 @@ class Artist < ApplicationRecord
 
       if params[:url_matches].present?
         q = q.url_matches(params[:url_matches])
-      end
-
-      q = q.attribute_matches(:is_active, params[:is_active])
-      q = q.attribute_matches(:is_banned, params[:is_banned])
-
-      if params[:creator_name].present?
-        q = q.where("artists.creator_id = (select _.id from users _ where lower(_.name) = ?)", params[:creator_name].tr(" ", "_").mb_chars.downcase)
-      end
-
-      if params[:creator_id].present?
-        q = q.where("artists.creator_id = ?", params[:creator_id].to_i)
       end
 
       if params[:has_tag].to_s.truthy?
@@ -565,7 +519,6 @@ class Artist < ApplicationRecord
 
   include UrlMethods
   include NameMethods
-  include GroupMethods
   include VersionMethods
   extend FactoryMethods
   include NoteMethods
@@ -583,14 +536,6 @@ class Artist < ApplicationRecord
     else
       "Deleted"
     end
-  end
-
-  def deletable_by?(user)
-    user.is_builder?
-  end
-
-  def editable_by?(user)
-    user.is_builder? || (!is_banned? && is_active?)
   end
 
   def visible?

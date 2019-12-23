@@ -1,14 +1,15 @@
 class ArtistVersionsController < ApplicationController
-  before_action :member_only
   respond_to :html, :xml, :json
 
   def index
-    @artist_versions = ArtistVersion.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@artist_versions) do |format|
-      format.xml do
-        render :xml => @artist_versions.to_xml(:root => "artist-versions")
-      end
-    end
+    @artist_versions = ArtistVersion.includes(:updater).paginated_search(params)
+    respond_with(@artist_versions)
   end
 
+  def show
+    @artist_version = ArtistVersion.find(params[:id])
+    respond_with(@artist_version) do |format|
+      format.html { redirect_to artist_versions_path(search: { artist_id: @artist_version.artist_id }) }
+    end
+  end
 end

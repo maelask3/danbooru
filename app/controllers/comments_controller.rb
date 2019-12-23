@@ -5,6 +5,8 @@ class CommentsController < ApplicationController
   skip_before_action :api_check
 
   def index
+    params[:group_by] ||= "comment" if params[:search].present?
+
     if params[:group_by] == "comment" || request.format == Mime::Type.lookup("application/atom+xml")
       index_by_comment
     elsif request.format == Mime::Type.lookup("text/javascript")
@@ -48,7 +50,12 @@ class CommentsController < ApplicationController
 
   def show
     @comment = Comment.find(params[:id])
-    respond_with(@comment)
+
+    respond_with(@comment) do |format|
+      format.html do
+        redirect_to post_path(@comment.post, anchor: "comment_#{@comment.id}")
+      end
+    end
   end
 
   def destroy
@@ -65,7 +72,8 @@ class CommentsController < ApplicationController
     respond_with(@comment)
   end
 
-private
+  private
+
   def index_for_post
     @post = Post.find(params[:post_id])
     @comments = @post.comments
@@ -74,22 +82,18 @@ private
 
   def index_by_post
     @posts = Post.where("last_comment_bumped_at IS NOT NULL").tag_match(params[:tags]).reorder("last_comment_bumped_at DESC NULLS LAST").paginate(params[:page], :limit => 5, :search_count => params[:search])
-    @posts.each # hack to force rails to eager load
-    respond_with(@posts) do |format|
-      format.xml do
-        render :xml => @posts.to_xml(:root => "posts")
-      end
-    end
+
+    @posts = @posts.includes(comments: [:creator])
+    @posts = @posts.includes(comments: [:votes]) if CurrentUser.is_member?
+
+    respond_with(@posts)
   end
 
   def index_by_comment
-    @comments = Comment.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
+    @comments = Comment.includes(:creator, :updater).paginated_search(params)
     respond_with(@comments) do |format|
       format.atom do
         @comments = @comments.includes(:post, :creator).load
-      end
-      format.xml do
-        render :xml => @comments.to_xml(:root => "comments")
       end
     end
   end

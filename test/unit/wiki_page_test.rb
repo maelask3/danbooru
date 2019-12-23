@@ -16,7 +16,7 @@ class WikiPageTest < ActiveSupport::TestCase
         CurrentUser.user = FactoryBot.create(:moderator_user)
         @wiki_page = FactoryBot.create(:wiki_page, :is_locked => true)
         CurrentUser.user = FactoryBot.create(:user)
-        @wiki_page.update_attributes(:body => "hello")
+        @wiki_page.update(body: "hello")
         assert_equal(["Is locked and cannot be updated"], @wiki_page.errors.full_messages)
       end
 
@@ -24,7 +24,7 @@ class WikiPageTest < ActiveSupport::TestCase
         CurrentUser.user = FactoryBot.create(:moderator_user)
         @wiki_page = FactoryBot.create(:wiki_page, :is_locked => true)
         CurrentUser.user = FactoryBot.create(:moderator_user)
-        @wiki_page.update_attributes(:body => "hello")
+        @wiki_page.update(body: "hello")
         assert_equal([], @wiki_page.errors.full_messages)
       end
     end
@@ -37,7 +37,7 @@ class WikiPageTest < ActiveSupport::TestCase
       end
 
       should "allow the is_locked attribute to be updated" do
-        @wiki_page.update_attributes(:is_locked => true)
+        @wiki_page.update(is_locked: true)
         @wiki_page.reload
         assert_equal(true, @wiki_page.is_locked?)
       end
@@ -51,7 +51,7 @@ class WikiPageTest < ActiveSupport::TestCase
       end
 
       should "not allow the is_locked attribute to be updated" do
-        @wiki_page.update_attributes(:is_locked => true)
+        @wiki_page.update(is_locked: true)
         assert_equal(["Is locked and cannot be updated"], @wiki_page.errors.full_messages)
         @wiki_page.reload
         assert_equal(false, @wiki_page.is_locked?)
@@ -84,7 +84,7 @@ class WikiPageTest < ActiveSupport::TestCase
 
         assert_difference("WikiPageVersion.count") do
           @wiki_page.title = "yyy"
-          Timecop.travel(1.day.from_now) do
+          travel(1.day) do
             @wiki_page.save
           end
         end
@@ -92,7 +92,7 @@ class WikiPageTest < ActiveSupport::TestCase
 
       should "revert to a prior version" do
         @wiki_page.title = "yyy"
-        Timecop.travel(1.day.from_now) do
+        travel(1.day) do
           @wiki_page.save
         end
         version = WikiPageVersion.first
@@ -101,14 +101,19 @@ class WikiPageTest < ActiveSupport::TestCase
         assert_equal("hot_potato", @wiki_page.title)
       end
 
-      should "differentiate between updater and creator" do
-        another_user = FactoryBot.create(:user)
-        CurrentUser.scoped(another_user, "127.0.0.1") do
-          @wiki_page.title = "yyy"
-          @wiki_page.save
-        end
-        version = WikiPageVersion.last
-        assert_not_equal(@wiki_page.creator_id, version.updater_id)
+      should "update its dtext links" do
+        @wiki_page.update!(body: "[[long hair]]")
+        assert_equal(1, @wiki_page.dtext_links.size)
+        assert_equal("wiki_link", @wiki_page.dtext_links.first.link_type)
+        assert_equal("long_hair", @wiki_page.dtext_links.first.link_target)
+
+        @wiki_page.update!(body: "http://www.google.com")
+        assert_equal(1, @wiki_page.dtext_links.size)
+        assert_equal("external_link", @wiki_page.dtext_links.first.link_type)
+        assert_equal("http://www.google.com", @wiki_page.dtext_links.first.link_target)
+
+        @wiki_page.update!(body: "nothing")
+        assert_equal(0, @wiki_page.dtext_links.size)
       end
     end
   end

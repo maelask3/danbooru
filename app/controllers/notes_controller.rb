@@ -6,13 +6,9 @@ class NotesController < ApplicationController
   end
 
   def index
-    @notes = Note.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@notes) do |format|
-      format.html { @notes = @notes.includes(:creator) }
-      format.xml do
-        render :xml => @notes.to_xml(:root => "notes")
-      end
-    end
+    @notes = Note.includes(:creator).paginated_search(params)
+    @notes = @notes.includes(:creator) if request.format.html?
+    respond_with(@notes)
   end
 
   def show
@@ -51,7 +47,7 @@ class NotesController < ApplicationController
 
   def destroy
     @note = Note.find(params[:id])
-    @note.update_attributes(:is_active => false)
+    @note.update(is_active: false)
     respond_with(@note)
   end
 

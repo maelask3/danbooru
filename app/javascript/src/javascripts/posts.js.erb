@@ -1,12 +1,17 @@
+import CurrentUser from './current_user'
 import Utility from './utility'
 import Hammer from 'hammerjs'
 import Cookie from './cookie'
 import Note from './notes'
-import SavedSearch from './saved_searches'
 
 let Post = {};
 
 Post.pending_update_count = 0;
+Post.SWIPE_THRESHOLD = 60;
+Post.SWIPE_VELOCITY = 0.6;
+Post.MAX_RECOMMENDATIONS = 45; // 3 rows of 9 posts at 1920x1080.
+Post.LOW_TAG_COUNT = 10;
+Post.HIGH_TAG_COUNT = 20;
 
 Post.initialize_all = function() {
 
@@ -27,10 +32,9 @@ Post.initialize_all = function() {
     this.initialize_post_sections();
     this.initialize_post_image_resize_links();
     this.initialize_post_image_resize_to_window_link();
-    this.initialize_similar();
-    this.initialize_gestures();
+    this.initialize_recommended();
 
-    if ((Utility.meta("always-resize-images") === "true") || (Utility.meta("viewport") && (window.screen.width <= 660))) {
+    if (CurrentUser.data("always-resize-images") || (Utility.meta("viewport") && (window.screen.width <= 660))) {
       $("#image-resize-to-window-link").click();
     }
   }
@@ -49,7 +53,7 @@ Post.initialize_all = function() {
 }
 
 Post.initialize_gestures = function() {
-  if (Utility.meta("disable-mobile-gestures") === "true") {
+  if (CurrentUser.data("disable-mobile-gestures")) {
     return;
   }
   var $body = $("body");
@@ -60,23 +64,25 @@ Post.initialize_gestures = function() {
     return;
   }
   $("#image-container").css({overflow: "visible"});
-  var hasPrev = $("#a-show").length || $(".paginator a[rel~=prev]").length;
-  var hasNext = $("#a-index").length && $(".paginator a[rel~=next]").length;
+  var hasPrev = $(".paginator a[rel~=prev]").length;
+  var hasNext = $(".paginator a[rel~=next]").length;
 
-  var hammer = new Hammer($body[0], {touchAction: 'pan-y', recognizers: [[Hammer.Swipe, { threshold: 20, velocity: 0.4, direction: Hammer.DIRECTION_HORIZONTAL }]], inputClass: Hammer.TouchInput});
+  var hammer = new Hammer($body[0], {touchAction: 'pan-y', recognizers: [[Hammer.Swipe, { threshold: Post.SWIPE_THRESHOLD, velocity: Post.SWIPE_VELOCITY, direction: Hammer.DIRECTION_HORIZONTAL }]], inputClass: Hammer.TouchInput});
   $body.data("hammer", hammer);
 
   if (hasPrev) {
-    hammer.on("swiperight", function(e) {
+    hammer.on("swiperight", async function(e) {
       $("body").css({"transition-timing-function": "ease", "transition-duration": "0.2s", "opacity": "0", "transform": "translateX(150%)"});
-      $.timeout(200).done(function() {Post.swipe_prev(e)});
+      await Utility.delay(200);
+      Post.swipe_prev(e);
     });
   }
 
   if (hasNext) {
-    hammer.on("swipeleft", function(e) {
+    hammer.on("swipeleft", async function(e) {
       $("body").css({"transition-timing-function": "ease", "transition-duration": "0.2s", "opacity": "0", "transform": "translateX(-150%)"});
-      $.timeout(200).done(function() {Post.swipe_next(e)});
+      await Utility.delay(200);
+      Post.swipe_next(e);
     });
   }
 }
@@ -115,7 +121,7 @@ Post.open_edit_dialog = function() {
       of: window
     },
     drag: function(e, ui) {
-      if (Utility.meta("enable-auto-complete") === "true") {
+      if (CurrentUser.data("enable-auto-complete")) {
         $tag_string.data("uiAutocomplete").close();
       }
     },
@@ -167,17 +173,8 @@ Post.close_edit_dialog = function(e, ui) {
   $(document).trigger("danbooru:close-post-edit-dialog");
 }
 
-Post.initialize_similar = function() {
-  $("#similar-button").on("click.danbooru", function(e) {
-    $.get("/iqdb_queries", {"url": $("#post_source").val()}).done(function(html) {$("#iqdb-similar").html(html).show()});
-    e.preventDefault();
-  });
-}
-
 Post.swipe_prev = function(e) {
-  if ($("#a-show").length) {
-    window.history.back();
-  } if ($(".paginator a[rel~=prev]").length) {
+  if ($(".paginator a[rel~=prev]").length) {
     location.href = $("a[rel~=prev]").attr("href");
   }
 
@@ -249,15 +246,15 @@ Post.initialize_links = function() {
           other_post_id: other_post_id
         },
         success: function(data) {
-          $(window).trigger("danbooru:notice", "Successfully copied notes to <a href='" + other_post_id + "'>post #" + other_post_id + "</a>");
+          Utility.notice("Successfully copied notes to <a href='" + other_post_id + "'>post #" + other_post_id + "</a>");
         },
         error: function(data) {
           if (data.status === 404) {
-            $(window).trigger("danbooru:error", "Error: Invalid destination post");
+            Utility.error("Error: Invalid destination post");
           } else if (data.responseJSON && data.responseJSON.reason) {
-            $(window).trigger("danbooru:error", "Error: " + data.responseJSON.reason);
+            Utility.error("Error: " + data.responseJSON.reason);
           } else {
-            $(window).trigger("danbooru:error", "There was an error copying notes to <a href='" + other_post_id + "'>post #" + other_post_id + "</a>");
+            Utility.error("There was an error copying notes to <a href='" + other_post_id + "'>post #" + other_post_id + "</a>");
           }
         }
       });
@@ -370,10 +367,13 @@ Post.resize_image_to_window = function($img) {
     }
 
     if ($img.width() > client_width) {
-      var ratio = client_width / $img.data("original-width");
+      var isVideo = $img.prop("tagName") === "VIDEO";
+      var width = isVideo ? $img.prop("width") : $img.data("original-width");
+      var height = isVideo ? $img.prop("height") : $img.data("original-height");
+      var ratio = client_width / width;
       $img.data("scale-factor", ratio);
-      $img.css("width", $img.data("original-width") * ratio);
-      $img.css("height", $img.data("original-height") * ratio);
+      $img.css("width", width * ratio);
+      $img.css("height", height * ratio);
       Post.resize_ugoira_controls();
     }
   } else {
@@ -437,9 +437,7 @@ Post.initialize_post_sections = function() {
       $("#comments").hide();
       $("#edit").hide();
       $("#recommended").show();
-      $.get("/recommended_posts", {context: "post", post_id: Utility.meta("post-id")}, function(data) {
-        $("#recommended").html(data);
-      });
+      $.get("/recommended_posts.js", { search: { post_id: Utility.meta("post-id") }, limit: Post.MAX_RECOMMENDATIONS });
     } else {
       $("#edit").hide();
       $("#comments").hide();
@@ -462,14 +460,14 @@ Post.resize_ugoira_controls = function() {
 Post.notice_update = function(x) {
   if (x === "inc") {
     Post.pending_update_count += 1;
-    $(window).trigger("danbooru:notice", "Updating posts (" + Post.pending_update_count + " pending)...", true);
+    Utility.notice("Updating posts (" + Post.pending_update_count + " pending)...", true);
   } else {
     Post.pending_update_count -= 1;
 
     if (Post.pending_update_count < 1) {
-      $(window).trigger("danbooru:notice", "Posts updated");
+      Utility.notice("Posts updated");
     } else {
-      $(window).trigger("danbooru:notice", "Updating posts (" + Post.pending_update_count + " pending)...", true);
+      Utility.notice("Updating posts (" + Post.pending_update_count + " pending)...", true);
     }
   }
 }
@@ -488,7 +486,7 @@ Post.update_data = function(data) {
 }
 
 Post.vote = function(score, id) {
-  $(window).trigger("danbooru:notice", "Voting...");
+  Utility.notice("Voting...");
 
   $.post("/posts/" + id + "/votes.js", {
     score: score
@@ -513,7 +511,7 @@ Post.update = function(post_id, params) {
     },
     error: function(data) {
       Post.notice_update("dec");
-      $(window).trigger("danbooru:error", 'There was an error updating <a href="/posts/' + post_id + '">post #' + post_id + '</a>');
+      Utility.error(`There was an error updating <a href="/posts/${post_id}">post #${post_id}</a>`);
     }
   });
 }
@@ -529,7 +527,7 @@ Post.ban = function(post_id) {
       $("#post_" + post_id).remove();
     },
     error: function(data) {
-      $(window).trigger("danbooru:error", 'There was an error updating <a href="/posts/' + post_id + '">post #' + post_id + '</a>');
+      Utility.error(`There was an error updating <a href="/posts/${post_id}">post #${post_id}</a>`);
     }
   });
 }
@@ -540,36 +538,20 @@ Post.approve = function(post_id) {
     {"post_id": post_id}
   ).fail(function(data) {
     var message = $.map(data.responseJSON.errors, function(msg, attr) { return msg; }).join("; ");
-    $(window).trigger("danbooru:error", "Error: " + message);
+    Utility.error("Error: " + message);
   }).done(function(data) {
     var $post = $("#post_" + post_id);
     if ($post.length) {
       $post.data("flags", $post.data("flags").replace(/pending/, ""));
       $post.removeClass("post-status-pending");
-      $(window).trigger("danbooru:notice", "Approved post #" + post_id);
+      Utility.notice("Approved post #" + post_id);
     }
   });
 }
 
 Post.initialize_saved_searches = function() {
-  $("#new_saved_search #saved_search_label_string").autocomplete({
-    search: function() {
-      $(this).data("ui-autocomplete").menu.bindings = $();
-    },
-    source: function(req, resp) {
-      SavedSearch.labels(req.term).then(function(labels) {
-        resp(labels.map(function(label) {
-          return {
-            label: label.replace(/_/g, " "),
-            value: label
-          };
-        }));
-      });
-    }
-  });
-
   $("#save-search-dialog").dialog({
-    width: 500,
+    width: 700,
     modal: true,
     autoOpen: false,
     buttons: {
@@ -586,7 +568,7 @@ Post.initialize_saved_searches = function() {
   $("#save-search").on("click.danbooru", function(e) {
     $("#save-search-dialog #saved_search_query").val($("#tags").val());
 
-    if (Utility.meta("disable-labeled-saved-searches") === "false") {
+    if (CurrentUser.data("disable-categorized-saved-searches") === false) {
       $("#save-search-dialog").dialog("open");
     } else {
       $.post(
@@ -603,6 +585,17 @@ Post.initialize_saved_searches = function() {
   });
 }
 
+Post.initialize_recommended = function() {
+  $(document).on("click.danbooru", ".post-preview .more-recommended-posts", async function (event) {
+    event.preventDefault();
+
+    let post_id = $(this).parents(".post-preview").data("id");
+    $("#recommended").addClass("loading-recommended-posts");
+    await $.get("/recommended_posts.js", { search: { post_id: post_id }, limit: Post.MAX_RECOMMENDATIONS });
+    $("#recommended").removeClass("loading-recommended-posts");
+  });
+};
+
 Post.update_tag_count = function(event) {
   let string = "0 tags";
   let count = 0;
@@ -611,16 +604,21 @@ Post.update_tag_count = function(event) {
     let tags = [...new Set($(event.target).val().match(/\S+/g))];
     if (tags) {
       count = tags.length;
-      string = (count == 1) ? (count + " tag") : (count + " tags")
+      string = (count === 1) ? (count + " tag") : (count + " tags")
     }
   }
+
   $("#tags-container .count").html(string);
-  let klass = "smile";
-  if (count < 25) {
+  let klass = "";
+
+  if (count < Post.LOW_TAG_COUNT) {
     klass = "frown";
-  } else if (count < 35) {
+  } else if (count >= Post.LOW_TAG_COUNT && count < Post.HIGH_TAG_COUNT) {
     klass = "meh";
+  } else {
+    klass = "smile";
   }
+
   $("#tags-container .options #face").removeClass().addClass(`far fa-${klass}`);
 }
 

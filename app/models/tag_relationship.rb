@@ -16,19 +16,18 @@ class TagRelationship < ApplicationRecord
   has_one :antecedent_wiki, through: :antecedent_tag, source: :wiki_page
   has_one :consequent_wiki, through: :consequent_tag, source: :wiki_page
 
-  scope :active, ->{approved}
-  scope :approved, ->{where(status: %w[active processing queued])}
-  scope :deleted, ->{where(status: "deleted")}
-  scope :expired, ->{where("created_at < ?", EXPIRY.days.ago)}
-  scope :old, ->{where("created_at >= ? and created_at < ?", EXPIRY.days.ago, EXPIRY_WARNING.days.ago)}
-  scope :pending, ->{where(status: "pending")}
-  scope :retired, ->{where(status: "retired")}
+  scope :active, -> {approved}
+  scope :approved, -> {where(status: %w[active processing queued])}
+  scope :deleted, -> {where(status: "deleted")}
+  scope :expired, -> {where("created_at < ?", EXPIRY.days.ago)}
+  scope :old, -> {where("created_at >= ? and created_at < ?", EXPIRY.days.ago, EXPIRY_WARNING.days.ago)}
+  scope :pending, -> {where(status: "pending")}
+  scope :retired, -> {where(status: "retired")}
 
   before_validation :initialize_creator, :on => :create
   before_validation :normalize_names
   validates_format_of :status, :with => /\A(active|deleted|pending|processing|queued|retired|error: .*)\Z/
-  validates_presence_of :creator_id, :antecedent_name, :consequent_name
-  validates :creator, presence: { message: "must exist" }, if: -> { creator_id.present? }
+  validates_presence_of :antecedent_name, :consequent_name
   validates :approver, presence: { message: "must exist" }, if: -> { approver_id.present? }
   validates :forum_topic, presence: { message: "must exist" }, if: -> { forum_topic_id.present? }
   validate :antecedent_and_consequent_are_different
@@ -36,7 +35,6 @@ class TagRelationship < ApplicationRecord
 
   def initialize_creator
     self.creator_id = CurrentUser.user.id
-    self.creator_ip_addr = CurrentUser.ip_addr
   end
 
   def normalize_names
@@ -46,6 +44,10 @@ class TagRelationship < ApplicationRecord
 
   def is_approved?
     status.in?(%w[active processing queued])
+  end
+
+  def is_rejected?
+    status.in?(%w[retired deleted])
   end
 
   def is_retired?
@@ -79,6 +81,13 @@ class TagRelationship < ApplicationRecord
     deletable_by?(user)
   end
 
+  def reject!(update_topic: true)
+    transaction do
+      update!(status: "deleted")
+      forum_updater.update(reject_message(CurrentUser.user), "REJECTED") if update_topic
+    end
+  end
+
   module SearchMethods
     def name_matches(name)
       where("(antecedent_name like ? escape E'\\\\' or consequent_name like ? escape E'\\\\')", name.mb_chars.downcase.to_escaped_for_sql_like, name.mb_chars.downcase.to_escaped_for_sql_like)
@@ -110,6 +119,7 @@ class TagRelationship < ApplicationRecord
 
     def search(params)
       q = super
+      q = q.search_attributes(params, :creator, :approver, :forum_topic_id, :forum_post_id)
 
       if params[:name_matches].present?
         q = q.name_matches(params[:name_matches])

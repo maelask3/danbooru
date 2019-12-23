@@ -22,27 +22,16 @@ class TagImplicationsController < ApplicationController
   end
 
   def index
-    @tag_implications = TagImplication.search(search_params).paginate(params[:page], :limit => params[:limit])
-    respond_with(@tag_implications) do |format|
-      format.xml do
-        render :xml => @tag_implications.to_xml(:root => "tag-implications")
-      end
-    end
+    @tag_implications = TagImplication.includes(:antecedent_tag, :consequent_tag, :approver).paginated_search(params, count_pages: true)
+    respond_with(@tag_implications)
   end
 
   def destroy
     @tag_implication = TagImplication.find(params[:id])
-    if @tag_implication.deletable_by?(CurrentUser.user)
-      @tag_implication.reject!
-      respond_with(@tag_implication) do |format|
-        format.html do
-          flash[:notice] = "Tag implication was deleted"
-          redirect_to(tag_implications_path)
-        end
-      end
-    else
-      access_denied
-    end
+    raise User::PrivilegeError unless @tag_implication.deletable_by?(CurrentUser.user)
+
+    @tag_implication.reject!
+    respond_with(@tag_implication, location: tag_implications_path, notice: "Tag implication was deleted")
   end
 
   def approve
@@ -51,7 +40,7 @@ class TagImplicationsController < ApplicationController
     respond_with(@tag_implication, :location => tag_implication_path(@tag_implication))
   end
 
-private
+  private
 
   def tag_implication_params
     params.require(:tag_implication).permit(%i[antecedent_name consequent_name forum_topic_id skip_secondary_validations])

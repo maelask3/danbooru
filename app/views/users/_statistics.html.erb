@@ -3,9 +3,28 @@
   <table width="100%" class="user-statistics">
     <tbody>
       <tr>
+        <th>User ID</th>
+        <td><%= user.id %></td>
+      </tr>
+      <tr>
         <th>Join Date</th>
         <td><%= presenter.join_date %></td>
       </tr>
+      <% if CurrentUser.is_moderator? %>
+        <tr>
+          <th>Last IP</th>
+          <td>
+            <% if user.last_ip_addr.present? %>
+              <%= link_to user.last_ip_addr, ip_addresses_path(search: { ip_addr: user.last_ip_addr }) %>
+              (<%= link_to "users", ip_addresses_path(search: { ip_addr: user.last_ip_addr, group_by: "user" }) %>,
+              <%= link_to "IPs", ip_addresses_path(search: { user_id: user.id, group_by: "ip_addr" }) %>)
+            <% else %>
+              <em>unknown</em>
+              (<%= link_to "IPs", ip_addresses_path(search: { user_id: user.id, group_by: "ip_addr" }) %>)
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
 
       <tr>
         <th>Inviter</th>
@@ -18,7 +37,12 @@
 
       <tr>
         <th>Level</th>
-        <td><%= presenter.level %></td>
+        <td>
+          <%= user.level_string %>
+          <% if CurrentUser.user == user && !CurrentUser.is_gold? %>
+            (<%= link_to "upgrade", new_user_upgrade_path %>)
+          <% end %>
+        </td>
       </tr>
 
       <tr>
@@ -29,13 +53,17 @@
       <% if user.is_banned? && user.recent_ban %>
         <tr>
           <th>Ban reason</th>
-          <td><%= format_text presenter.ban_reason %></td>
+          <td>
+            <span class="prose">
+              <%= format_text presenter.ban_reason, inline: true %>
+            </span>
+          </td>
         </tr>
       <% end %>
 
       <tr>
         <th>Upload Limit</th>
-        <td><%= presenter.upload_limit(self) %> (<%= link_to "help", wiki_pages_path(title: "about:upload_limits") %>)</td>
+        <td><%= presenter.upload_limit(self) %> (<%= link_to_wiki "help", "about:upload_limits" %>)</td>
       </tr>
 
       <tr>
@@ -43,7 +71,7 @@
         <td>
           <%= presenter.upload_count(self) %>
           <% if presenter.has_uploads? %>
-            [<%= link_to "tag changes report", reports_upload_tags_path(user_id: user.id) %>]
+            (<%= link_to "tag changes report", reports_upload_tags_path(user_id: user.id) %>)
           <% end %>
           <% if CurrentUser.is_moderator? %>
             [<%= link_to "sample", posts_path(:tags => "user:#{user.name} order:random limit:300") %>]
@@ -72,6 +100,17 @@
         </td>
       </tr>
 
+      <% if CurrentUser.user == user || CurrentUser.user.is_admin? %>
+        <tr>
+          <th>Votes</th>
+          <td>
+            <%= link_to user.post_votes.count, post_votes_path(search: { user_name: user.name }) %> posts,
+            <%= link_to user.comment_votes.count, comment_votes_path(search: { user_name: user.name }) %> comments,
+            <%= link_to user.forum_post_votes.count, forum_post_votes_path(search: { creator_name: user.name }) %> forum posts 
+          </td>
+        </tr>
+      <% end %>
+
       <tr>
         <th>Favorite Groups</th>
         <td><%= presenter.favorite_group_count(self) %></td>
@@ -81,8 +120,8 @@
         <th>Post Changes</th>
         <td>
           <%= presenter.post_version_count(self) %>
-          <% if CurrentUser.is_moderator? && UserRevert.can_revert?(user)%>
-            [<%= link_to "revert all", new_user_revert_path(user_id: user.id) %>]
+          <% if CurrentUser.id == user.id %> 
+            (<%= link_to "refresh", new_maintenance_user_count_fixes_path %>)
           <% end %>
         </td>
       </tr>
@@ -146,7 +185,7 @@
         <td><%= presenter.feedbacks(self) %></td>    </tbody>
       </tr>
       
-      <% if presenter.previous_names(self).present? %>
+      <% if CurrentUser.is_moderator? && presenter.previous_names(self).present? %>
         <tr>
           <th>Previous Names</th>
           <td><%= presenter.previous_names(self) %></td>
@@ -154,7 +193,7 @@
       <% end %>
 
       <% if CurrentUser.id == user.id %>
-        <% if CurrentUser.has_saved_searches? %>
+        <% if SavedSearch.labels_for(CurrentUser.user.id).present? %>
           <tr>
             <th>Saved Searches</th>
             <td>
@@ -169,7 +208,7 @@
           <th>API Key</th>
           <td>
             <%= link_to (CurrentUser.api_key ? "View" : "Generate"), user_api_key_path(CurrentUser.user) %>
-            (<%= link_to "help", wiki_pages_path(title: "help:api") %>)
+            (<%= link_to_wiki "help", "help:api" %>)
           </td>
         </tr>
 
@@ -177,7 +216,7 @@
           <th>API Limits</th>
           <td>
             <%= CurrentUser.user.remaining_api_limit %>
-            / <%= CurrentUser.user.api_burst_limit %> <span class="hint">(may not be up to date)</span>
+            / <%= CurrentUser.user.api_burst_limit %> <span class="fineprint">(may not be up to date)</span>
           </td>
         </tr>
       <% end %>

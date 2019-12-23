@@ -1,9 +1,8 @@
 class PostQueryBuilder
-  attr_accessor :query_string, :read_only
+  attr_accessor :query_string
 
-  def initialize(query_string, read_only: false)
+  def initialize(query_string)
     @query_string = query_string
-    @read_only = read_only
   end
 
   def add_range_relation(arr, field, relation)
@@ -69,17 +68,15 @@ class PostQueryBuilder
   end
 
   def add_saved_search_relation(saved_searches, relation)
-    if SavedSearch.enabled?
-      saved_searches.each do |saved_search|
-        if saved_search == "all"
-          post_ids = SavedSearch.post_ids_for(CurrentUser.id)
-        else
-          post_ids = SavedSearch.post_ids_for(CurrentUser.id, label: saved_search)
-        end
-
-        post_ids = [0] if post_ids.empty?
-        relation = relation.where("posts.id": post_ids)
+    saved_searches.each do |saved_search|
+      if saved_search == "all"
+        post_ids = SavedSearch.post_ids_for(CurrentUser.id)
+      else
+        post_ids = SavedSearch.post_ids_for(CurrentUser.id, label: saved_search)
       end
+
+      post_ids = [0] if post_ids.empty?
+      relation = relation.where("posts.id": post_ids)
     end
 
     relation
@@ -119,10 +116,10 @@ class PostQueryBuilder
       q = Tag.parse_query(query_string)
     end
 
-    relation = read_only ? PostReadOnly.all : Post.all
+    relation = Post.all
 
     if q[:tag_count].to_i > Danbooru.config.tag_query_limit
-      raise ::Post::SearchError.new("You cannot search for more than #{Danbooru.config.tag_query_limit} tags at a time")
+      raise ::Post::SearchError
     end
 
     if CurrentUser.safe_mode?
@@ -195,37 +192,54 @@ class PostQueryBuilder
       relation = relation.where.not("posts.file_ext": q[:filetype_neg])
     end
 
-    # The SourcePattern SQL function replaces Pixiv sources with "pixiv/[suffix]", where
-    # [suffix] is everything past the second-to-last slash in the URL.  It leaves non-Pixiv
-    # URLs unchanged.  This is to ease database load for Pixiv source searches.
     if q[:source]
-      if q[:source] == "none%"
-        relation = relation.where("posts.source = ''")
-      elsif q[:source] == "http%"
-        relation = relation.where("(lower(posts.source) like ?)", "http%")
-      elsif q[:source] =~ /^(?:https?:\/\/)?%\.?pixiv(?:\.net(?:\/img)?)?(?:%\/img\/|%\/|(?=%$))(.+)$/i
-        relation = relation.where("SourcePattern(lower(posts.source)) LIKE lower(?) ESCAPE E'\\\\'", "pixiv/" + $1)
+      if q[:source] == "none"
+        relation = relation.where_like(:source, '')
       else
-        relation = relation.where("SourcePattern(lower(posts.source)) LIKE SourcePattern(lower(?)) ESCAPE E'\\\\'", q[:source])
+        relation = relation.where_ilike(:source, q[:source].downcase + "*")
       end
     end
 
     if q[:source_neg]
-      if q[:source_neg] == "none%"
-        relation = relation.where("posts.source != ''")
-      elsif q[:source_neg] == "http%"
-        relation = relation.where("(lower(posts.source) not like ?)", "http%")
-      elsif q[:source_neg] =~ /^(?:https?:\/\/)?%\.?pixiv(?:\.net(?:\/img)?)?(?:%\/img\/|%\/|(?=%$))(.+)$/i
-        relation = relation.where("SourcePattern(lower(posts.source)) NOT LIKE lower(?) ESCAPE E'\\\\'", "pixiv/" + $1)
+      if q[:source_neg] == "none"
+        relation = relation.where_not_like(:source, '')
       else
-        relation = relation.where("SourcePattern(lower(posts.source)) NOT LIKE SourcePattern(lower(?)) ESCAPE E'\\\\'", q[:source_neg])
+        relation = relation.where_not_ilike(:source, q[:source_neg].downcase + "*")
       end
     end
 
-    if q[:pool] == "none"
-      relation = relation.where("posts.pool_string = ''")
-    elsif q[:pool] == "any"
-      relation = relation.where("posts.pool_string != ''")
+    q[:pool].to_a.each do |pool_name|
+      case pool_name
+      when "none"
+        relation = relation.where.not(id: Pool.select("unnest(post_ids)"))
+      when "any"
+        relation = relation.where(id: Pool.select("unnest(post_ids)"))
+      when "series"
+        relation = relation.where(id: Pool.series.select("unnest(post_ids)"))
+      when "collection"
+        relation = relation.where(id: Pool.collection.select("unnest(post_ids)"))
+      when /\*/
+        relation = relation.where(id: Pool.name_matches(pool_name).select("unnest(post_ids)"))
+      else
+        relation = relation.where(id: Pool.named(pool_name).select("unnest(post_ids)"))
+      end
+    end
+
+    q[:pool_neg].to_a.each do |pool_name|
+      case pool_name
+      when "none"
+        relation = relation.where(id: Pool.select("unnest(post_ids)"))
+      when "any"
+        relation = relation.where.not(id: Pool.select("unnest(post_ids)"))
+      when "series"
+        relation = relation.where.not(id: Pool.series.select("unnest(post_ids)"))
+      when "collection"
+        relation = relation.where.not(id: Pool.collection.select("unnest(post_ids)"))
+      when /\*/
+        relation = relation.where.not(id: Pool.name_matches(pool_name).select("unnest(post_ids)"))
+      else
+        relation = relation.where.not(id: Pool.named(pool_name).select("unnest(post_ids)"))
+      end
     end
 
     if q[:saved_searches]
@@ -285,7 +299,7 @@ class PostQueryBuilder
     if q[:flagger_ids_neg]
       q[:flagger_ids_neg].each do |flagger_id|
         if CurrentUser.can_view_flagger?(flagger_id)
-          post_ids = PostFlag.unscoped.search({:creator_id => flagger_id, :category => "normal"}).reorder("").select {|flag| flag.not_uploaded_by?(CurrentUser.id)}.map {|flag| flag.post_id}.uniq
+          post_ids = PostFlag.unscoped.search(:creator_id => flagger_id, :category => "normal").reorder("").select {|flag| flag.not_uploaded_by?(CurrentUser.id)}.map {|flag| flag.post_id}.uniq
           if post_ids.any?
             relation = relation.where.not("posts.id": post_ids)
           end
@@ -296,11 +310,11 @@ class PostQueryBuilder
     if q[:flagger_ids]
       q[:flagger_ids].each do |flagger_id|
         if flagger_id == "any"
-          relation = relation.where('EXISTS (' + PostFlag.unscoped.search({:category => "normal"}).where('post_id = posts.id').reorder('').select('1').to_sql + ')')
+          relation = relation.where('EXISTS (' + PostFlag.unscoped.search(:category => "normal").where('post_id = posts.id').reorder('').select('1').to_sql + ')')
         elsif flagger_id == "none"
-          relation = relation.where('NOT EXISTS (' + PostFlag.unscoped.search({:category => "normal"}).where('post_id = posts.id').reorder('').select('1').to_sql + ')')
+          relation = relation.where('NOT EXISTS (' + PostFlag.unscoped.search(:category => "normal").where('post_id = posts.id').reorder('').select('1').to_sql + ')')
         elsif CurrentUser.can_view_flagger?(flagger_id)
-          post_ids = PostFlag.unscoped.search({:creator_id => flagger_id, :category => "normal"}).reorder("").select {|flag| flag.not_uploaded_by?(CurrentUser.id)}.map {|flag| flag.post_id}.uniq
+          post_ids = PostFlag.unscoped.search(:creator_id => flagger_id, :category => "normal").reorder("").select {|flag| flag.not_uploaded_by?(CurrentUser.id)}.map {|flag| flag.post_id}.uniq
           relation = relation.where("posts.id": post_ids)
         end
       end
@@ -308,7 +322,7 @@ class PostQueryBuilder
 
     if q[:appealer_ids_neg]
       q[:appealer_ids_neg].each do |appealer_id|
-        relation = relation.where.not("posts.id":  PostAppeal.unscoped.where(creator_id: appealer_id).select(:post_id).distinct)
+        relation = relation.where.not("posts.id": PostAppeal.unscoped.where(creator_id: appealer_id).select(:post_id).distinct)
       end
     end
 
@@ -433,6 +447,7 @@ class PostQueryBuilder
     if q[:ordpool].present?
       pool_id = q[:ordpool].to_i
 
+      # XXX unify with Pool#posts
       pool_posts = Pool.joins("CROSS JOIN unnest(pools.post_ids) WITH ORDINALITY AS row(post_id, pool_index)").where(id: pool_id).select(:post_id, :pool_index)
       relation = relation.joins("JOIN (#{pool_posts.to_sql}) pool_posts ON pool_posts.post_id = posts.id").order("pool_posts.pool_index ASC")
     end
@@ -458,14 +473,12 @@ class PostQueryBuilder
     end
 
     if q[:upvote].present?
-      user_id = q[:upvote]
-      post_ids = PostVote.where(:user_id => user_id).where("score > 0").limit(400).pluck(:post_id)
+      post_ids = PostVote.where(user: q[:upvote]).where("score > 0").select(:post_id)
       relation = relation.where("posts.id": post_ids)
     end
 
     if q[:downvote].present?
-      user_id = q[:downvote]
-      post_ids = PostVote.where(:user_id => user_id).where("score < 0").limit(400).pluck(:post_id)
+      post_ids = PostVote.where(user: q[:downvote]).where("score < 0").select(:post_id)
       relation = relation.where("posts.id": post_ids)
     end
 

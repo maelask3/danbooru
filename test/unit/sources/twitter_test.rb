@@ -24,7 +24,7 @@ module Sources
         assert_equal(urls, @site.image_urls)
       end
     end
-    
+
     context "A video" do
       setup do
         @site = Sources::Strategies.find("https://twitter.com/CincinnatiZoo/status/859073537713328129")
@@ -43,27 +43,6 @@ module Sources
 
       should "get the image url" do
         assert_equal("https://video.twimg.com/tweet_video/C-1Tns7WsAAqvqn.mp4", @site.image_url)
-      end
-    end
-
-    context "A twitter summary card" do
-      setup do
-        @site = Sources::Strategies.find("https://twitter.com/NatGeo/status/932700115936178177")
-      end
-
-      should "get the image url" do
-        assert_equal("https://pmdvod.nationalgeographic.com/NG_Video/205/302/smpost_1510342850295.jpg", @site.image_url)
-      end
-    end
-
-    context "A twitter summary card from twitter" do
-      setup do
-        @site = Sources::Strategies.find("https://twitter.com/masayasuf/status/870734961778630656/photo/1")
-      end
-
-      should "get the image url" do
-        skip "Find another url, the masayasuf tweet no longer exists"
-        assert_equal("https://pbs.twimg.com/media/DBV40M2UIAAHYlt.jpg:orig", @site.image_url)
       end
     end
 
@@ -179,6 +158,23 @@ module Sources
       end
     end
 
+    context "The source site for a direct image url (pbs.twimg.com/media/*?format=jpg&name=*) without a referer url" do
+      setup do
+        @site = Sources::Strategies.find("https://pbs.twimg.com/media/EBGp2YdUYAA19Uj?format=jpg&name=small")
+      end
+
+      should "work" do
+        assert_equal("https://pbs.twimg.com/media/EBGp2YdUYAA19Uj.jpg:orig", @site.image_url)
+        assert_equal(["https://pbs.twimg.com/media/EBGp2YdUYAA19Uj.jpg:orig"], @site.image_urls)
+        assert_equal("https://pbs.twimg.com/media/EBGp2YdUYAA19Uj.jpg:orig", @site.canonical_url)
+      end
+
+      should "work for filenames containing dashes" do
+        @site = Sources::Strategies.find("https://pbs.twimg.com/media/EAjc-OWVAAAxAgQ.jpg", "https://twitter.com/asteroid_ill/status/1155420330128625664")
+        assert_equal("https://pbs.twimg.com/media/EAjc-OWVAAAxAgQ.jpg:orig", @site.image_url)
+      end
+    end
+
     context "The source site for a https://twitter.com/i/web/status/:id url" do
       setup do
         @site = Sources::Strategies.find("https://twitter.com/i/web/status/943446161586733056")
@@ -217,7 +213,7 @@ module Sources
       should "get the tags" do
         tags = [
           %w[foo https://twitter.com/hashtag/foo],
-          %w[ホワイトデー https://twitter.com/hashtag/ホワイトデー],
+          %w[ホワイトデー https://twitter.com/hashtag/ホワイトデー]
         ]
 
         assert_equal(tags, @site.tags)
@@ -250,6 +246,17 @@ module Sources
 
         assert_equal(site.site_name, "Twitter")
         assert_equal("https://pbs.twimg.com/media/C8p-gPhVoAMZupS.png:orig", site.image_url)
+      end
+    end
+
+    context "A tweet from a suspended user" do
+      should "not fail" do
+        site = Sources::Strategies.find("https://twitter.com/tanso_panz/status/1192429800717029377")
+
+        assert_equal(site.site_name, "Twitter")
+        assert_equal("tanso_panz", site.artist_name)
+        assert_equal("https://twitter.com/tanso_panz", site.profile_url)
+        assert_nil(site.image_url)
       end
     end
   end

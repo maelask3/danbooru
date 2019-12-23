@@ -18,9 +18,9 @@ class RelatedTagQuery
     if query =~ /\*/
       pattern_matching_tags
     elsif category.present?
-      related_tags_by_category
+      RelatedTagCalculator.frequent_tags_for_search(query, category: Tag.categories.value_for(category)).take(25).pluck(:name)
     elsif query.present?
-      related_tags
+      RelatedTagCalculator.similar_tags_for_search(query).take(25).map(&:name)
     else
       []
     end
@@ -42,17 +42,13 @@ class RelatedTagQuery
   end
 
   def wiki_page_tags
-    results = wiki_page.try(:tags) || []
-    results.reject! do |name|
-      name =~ /^(?:list_of_|tag_group|pool_group|howto:|about:|help:|template:)/
-    end
-    results
+    wiki_page.try(:tags) || []
   end
 
   def other_wiki_pages
     return [] unless Tag.category_for(query) == Tag.categories.copyright
 
-    other_wikis = wiki_page&.tags.to_a.grep(/^list_of_/i)
+    other_wikis = DText.parse_wiki_titles(wiki_page&.body&.to_s).grep(/\Alist_of_/i)
     other_wikis = other_wikis.map { |name| WikiPage.titled(name).first }
     other_wikis = other_wikis.select { |wiki| wiki.tags.present? }
     other_wikis
@@ -72,7 +68,7 @@ class RelatedTagQuery
     }
   end
 
-protected
+  protected
 
   def tags_with_categories(list_of_tag_names)
     Tag.categories_for(list_of_tag_names).to_a
@@ -80,20 +76,6 @@ protected
 
   def pattern_matching_tags
     Tag.name_matches(query).where("post_count > 0").order("post_count desc").limit(50).sort_by {|x| x.name}.map(&:name)
-  end
-
-  def related_tags
-    tag = Tag.named(query.strip).first
-
-    if tag
-      tag.related_tag_array.map(&:first)
-    else
-      []
-    end
-  end
-
-  def related_tags_by_category
-    RelatedTagCalculator.calculate_from_sample_to_array(query, Tag.categories.value_for(category)).map(&:first)
   end
 
   def wiki_page

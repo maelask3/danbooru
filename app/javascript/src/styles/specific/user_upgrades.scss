@@ -1,8 +1,5 @@
 div#c-user-upgrades {
   div#a-new {
-    max-width: 40em;
-    font-size: 1.2em;
-
     form.stripe {
       display: inline;
     }
@@ -22,15 +19,12 @@ div#c-user-upgrades {
           width: 10em;
         }
 
-        colgroup#basic {
-        }
-
-        colgroup#gold  {
-          background-color: #FFF380;
+        colgroup#gold {
+          background-color: var(--user-upgrade-gold-background-color);
         }
 
         colgroup#platinum {
-          background-color: #eee;
+          background-color: var(--user-upgrade-platinum-background-color);
         }
 
         td, th {
@@ -41,14 +35,8 @@ div#c-user-upgrades {
 
         tbody {
           tr:hover {
-            background-color: #FEF;
+            background-color: var(--user-upgrade-table-row-hover-background-color);
           }
-        }
-
-        p.cost-footnote {
-          font-size: 80%;
-          color: gray;
-          margin: 0;
         }
       }
     }

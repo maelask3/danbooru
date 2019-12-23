@@ -21,7 +21,7 @@ class ForumTopicsControllerTest < ActionDispatch::IntegrationTest
 
       should "not allow users to see the topic" do
         get_auth forum_topic_path(@forum_topic), @user
-        assert_redirected_to forum_topics_path
+        assert_response 403
       end
 
       should "not bump the forum for users without access" do
@@ -79,6 +79,13 @@ class ForumTopicsControllerTest < ActionDispatch::IntegrationTest
         get forum_topic_path(@forum_topic), params: {:format => :atom}
         assert_response :success
       end
+
+      should "raise an error if the user doesn't have permission to view the topic" do
+        as(@user) { @forum_topic.update(min_level: User::Levels::ADMIN) }
+        get_auth forum_topic_path(@forum_topic), @user
+
+        assert_response 403
+      end
     end
 
     context "index action" do
@@ -110,16 +117,16 @@ class ForumTopicsControllerTest < ActionDispatch::IntegrationTest
           get forum_topics_path, params: {:search => {:title_matches => "forum"}}
           assert_response :success
           assert_select "a.forum-post-link", @forum_topic.title
-          assert_select "a.forum-post-link", {count: 0, text: @topic1.title}
-          assert_select "a.forum-post-link", {count: 0, text: @topic2.title}
+          assert_select "a.forum-post-link", count: 0, text: @topic1.title
+          assert_select "a.forum-post-link", count: 0, text: @topic2.title
         end
 
         should "list nothing for when the search matches nothing" do
           get forum_topics_path, params: {:search => {:title_matches => "bababa"}}
           assert_response :success
-          assert_select "a.forum-post-link", {count: 0, text: @forum_topic.title}
-          assert_select "a.forum-post-link", {count: 0, text: @topic1.title}
-          assert_select "a.forum-post-link", {count: 0, text: @topic2.title}
+          assert_select "a.forum-post-link", count: 0, text: @forum_topic.title
+          assert_select "a.forum-post-link", count: 0, text: @topic1.title
+          assert_select "a.forum-post-link", count: 0, text: @topic2.title
         end
       end
     end

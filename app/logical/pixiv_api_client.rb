@@ -2,10 +2,11 @@ require 'resolv-replace'
 
 class PixivApiClient
   extend Memoist
-  
+
   API_VERSION = "1"
   CLIENT_ID = "bYGKuGVw91e0NMfPGp44euvGt59s"
   CLIENT_SECRET = "HP3RmkgAmEGro0gn1x9ioawQE8WMfvLXDz3ZqxpK"
+  CLIENT_HASH_SALT = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
 
   # Tools to not include in the tags list. We don't tag digital media, so
   # including these results in bad translated tags suggestions.
@@ -22,8 +23,8 @@ class PixivApiClient
     VistaPro Sculptris Comi\ Po! modo DAZ\ Studio 3D-Coat
   ]
 
-  class Error < Exception ; end
-  class BadIDError < Error ; end
+  class Error < Exception; end
+  class BadIDError < Error; end
 
   class WorkResponse
     attr_reader :json, :pages, :name, :moniker, :user_id, :page_count, :tags
@@ -92,7 +93,7 @@ class PixivApiClient
     end
 
     def pages
-      # ex: 
+      # ex:
       # https://i.pximg.net/c/150x150_80/novel-cover-master/img/2017/07/27/23/14/17/8465454_80685d10e6df4d7d53ad347ddc18a36b_master1200.jpg (6096b)
       # =>
       # https://i.pximg.net/novel-cover-original/img/2017/07/27/23/14/17/8465454_80685d10e6df4d7d53ad347ddc18a36b.jpg (532129b)
@@ -100,7 +101,8 @@ class PixivApiClient
     end
     memoize :pages
 
-  public
+    public
+
     PXIMG = %r!\Ahttps?://i\.pximg\.net/c/\d+x\d+_\d+/novel-cover-master/img/(?<timestamp>\d+/\d+/\d+/\d+/\d+/\d+)/(?<filename>\d+_[a-f0-9]+)_master\d+\.(?<ext>jpg|jpeg|png|gif)!i
 
     def find_original(x)
@@ -122,7 +124,7 @@ class PixivApiClient
     def name
       json["body"]["user"]["name"]
     end
-    
+
     def user_id
       json["body"]["user"]["userId"]
     end
@@ -168,19 +170,18 @@ class PixivApiClient
     }
 
     url = "https://public-api.secure.pixiv.net/v#{API_VERSION}/works/#{illust_id.to_i}.json"
-    body, code = HttpartyCache.get(url, headers: headers, params: params)
-    json = JSON.parse(body)
+    response = Danbooru::Http.cache(1.minute).headers(headers).get(url, params: params)
+    json = response.parse
 
-    if code == 200
+    if response.code == 200
       WorkResponse.new(json["response"][0])
     elsif json["status"] == "failure" && json.dig("errors", "system", "message") =~ /対象のイラストは見つかりませんでした。/
       raise BadIDError.new("Pixiv ##{illust_id} not found: work was deleted, made private, or ID is invalid.")
     else
-      raise Error.new("Pixiv API call failed (status=#{code} body=#{body})")
+      raise Error.new("Pixiv API call failed (status=#{response.code} body=#{response.body})")
     end
-
   rescue JSON::ParserError
-    raise Error.new("Pixiv API call failed (status=#{code} body=#{body})")
+    raise Error.new("Pixiv API call failed (status=#{response.code} body=#{response.body})")
   end
 
   def fanbox(fanbox_id)
@@ -220,15 +221,21 @@ class PixivApiClient
   def access_token
     Cache.get("pixiv-papi-access-token", 3000) do
       access_token = nil
+
+      client_time = Time.now.rfc3339
+      client_hash = Digest::MD5.hexdigest(client_time + CLIENT_HASH_SALT)
+
       headers = {
-        "Referer" => "http://www.pixiv.net"
+        "Referer": "http://www.pixiv.net",
+        "X-Client-Time": client_time,
+        "X-Client-Hash": client_hash
       }
       params = {
-        "username" => Danbooru.config.pixiv_login,
-        "password" => Danbooru.config.pixiv_password,
-        "grant_type" => "password",
-        "client_id" => CLIENT_ID,
-        "client_secret" => CLIENT_SECRET
+        username: Danbooru.config.pixiv_login,
+        password: Danbooru.config.pixiv_password,
+        grant_type: "password",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET
       }
       url = "https://oauth.secure.pixiv.net/auth/token"
 

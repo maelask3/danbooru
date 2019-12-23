@@ -1,0 +1,200 @@
+import Post from './posts.js.erb'
+import Shortcuts from './shortcuts.js';
+import Utility from './utility.js';
+import Dropzone from 'dropzone';
+import SparkMD5 from 'spark-md5';
+
+let Upload = {};
+
+Upload.MAX_FILE_SIZE = <%= Danbooru.config.max_file_size.to_json %> / (1024 * 1024);
+Upload.IQDB_LIMIT = 5;
+Upload.IQDB_MIN_SIMILARITY = 50;
+Upload.IQDB_HIGH_SIMILARITY = 70;
+
+Upload.initialize_all = function() {
+  if ($("#c-uploads,#c-posts").length) {
+    Utility.keydown("return", "submit", Shortcuts.submit_form, "#upload_tag_string, #post_tag_string");
+    $("#upload_source").on("change.danbooru", Upload.fetch_data_manual);
+    $(document).on("click.danbooru", "#fetch-data-manual", Upload.fetch_data_manual);
+  }
+
+  if ($("#c-uploads").length) {
+    if ($("#image").prop("complete")) {
+      this.initialize_image();
+    } else {
+      $("#image").on("error.danbooru", (e) => {
+        $("#upload-image").hide();
+        $("#scale-link").hide();
+        $("#iqdb-similar").hide();
+      });
+      $("#image").on("load.danbooru", this.initialize_image);
+    }
+    this.initialize_similar();
+    this.initialize_submit();
+    $("#similar-button").click();
+
+    $("#toggle-artist-commentary").on("click.danbooru", function(e) {
+      Upload.toggle_commentary();
+      e.preventDefault();
+    });
+  }
+
+  if ($("#c-uploads #a-new").length) {
+    this.initialize_dropzone();
+  }
+}
+
+Upload.initialize_submit = function() {
+  $("#form").on("submit.danbooru", Upload.validate_upload);
+}
+
+Upload.validate_upload = function (e) {
+  var error_messages = [];
+  if (($("#upload_file").val() === "") && !/^https?:\/\//i.test($("#upload_source").val()) && $("#upload_md5_confirmation").val() === "") {
+    error_messages.push("Must choose file or specify source");
+  }
+  if (!$("#upload_rating_s").prop("checked") && !$("#upload_rating_q").prop("checked") && !$("#upload_rating_e").prop("checked") &&
+      ($("#upload_tag_string").val().search(/\brating:[sqe]/i) < 0)) {
+    error_messages.push("Must specify a rating");
+  }
+  if (error_messages.length === 0) {
+    $("#submit-button").prop("disabled", "true");
+    $("#submit-button").prop("value", "Submitting...");
+    $("#client-errors").hide();
+  } else {
+    $("#client-errors").html("<strong>Error</strong>: " + error_messages.join(", "));
+    $("#client-errors").show();
+    e.preventDefault();
+  }
+}
+
+Upload.initialize_similar = function() {
+  $("#similar-button").on("click.danbooru", function(e) {
+    e.preventDefault();
+
+    let source = $("#upload_source").val();
+    if (/^https?:\/\//.test(source)) {
+      $.get("/iqdb_queries.js", {
+        limit: Upload.IQDB_LIMIT,
+        search: {
+          url: source,
+          similarity: Upload.IQDB_MIN_SIMILARITY,
+          high_similarity: Upload.IQDB_HIGH_SIMILARITY
+        }
+      });
+    }
+  });
+}
+
+Upload.update_scale = function() {
+  var $image = $("#image");
+  var ratio = $image.data("scale-factor");
+  if (ratio < 1) {
+    $("#scale").html("Scaled " + parseInt(100 * ratio) + "% (original: " + $image.data("original-width") + "x" + $image.data("original-height") + ")");
+  } else {
+    $("#scale").html("Original: " + $image.data("original-width") + "x" + $image.data("original-height"));
+  }
+}
+
+Upload.fetch_data_manual = function(e) {
+  var url = $("#upload_source,#post_source").val();
+  var ref = $("#upload_referer_url").val();
+
+  if (/^https?:\/\//.test(url)) {
+    $("#source-info").addClass("loading");
+    $.get("/source.js", { url: url, ref: ref }).always(resp => $("#source-info").removeClass("loading"));
+  }
+
+  e.preventDefault();
+}
+
+Upload.initialize_image = function() {
+  var $image = $("#image");
+  if (!$image.length) {
+    return;
+  }
+  var width = $image.width();
+  var height = $image.height();
+  if (!width || !height) {
+    // we errored out
+    return;
+  }
+  $("#no-image-available").hide();
+  $image.data("original-width", width);
+  $image.data("original-height", height);
+  Post.resize_image_to_window($image);
+  Post.initialize_post_image_resize_to_window_link();
+  Upload.update_scale();
+  $("#image-resize-to-window-link").on("click.danbooru", Upload.update_scale);
+}
+
+Upload.toggle_commentary = function() {
+  if ($(".artist-commentary").is(":visible")) {
+    $("#toggle-artist-commentary").text("show »");
+  } else {
+    $("#toggle-artist-commentary").text("« hide");
+  }
+
+  $(".artist-commentary").slideToggle();
+};
+
+Upload.initialize_dropzone = function() {
+  if (!window.FileReader) {
+    $("#filedropzone").remove();
+    return;
+  }
+
+  let dropzone = new Dropzone(document.body, {
+    paramName: "upload[file]",
+    url: "/uploads/preprocess",
+    clickable: "#filedropzone",
+    previewsContainer: "#filedropzone",
+    thumbnailHeight: 150,
+    thumbnailWidth: 150,
+    thumbnailMethod: "contain",
+    addRemoveLinks: false,
+    maxFiles: 1,
+    maxFilesize: Upload.MAX_FILE_SIZE,
+    maxThumbnailFilesize: Upload.MAX_FILE_SIZE,
+    timeout: 0,
+    acceptedFiles: "image/jpeg,image/png,image/gif,video/mp4,video/webm,.swf",
+    previewTemplate: $("#dropzone-preview-template").html(),
+    init: function() {
+      $(".fallback").hide();
+      this.on("complete", function(file) {
+        $("#filedropzone .dz-progress").hide();
+      });
+      this.on("addedfile", function(file) {
+        $("#filedropzone .dropzone-hint").hide();
+
+        // replace the previous file with the new one.
+        dropzone.files.forEach(f => {
+          if (f !== file) {
+            dropzone.removeFile(f);
+          }
+        });
+
+        let reader = new FileReader();
+        reader.addEventListener("loadend", function() {
+          let buf = new SparkMD5.ArrayBuffer();
+          buf.append(this.result);
+          let hash = buf.end();
+          $("#upload_md5_confirmation").val(hash);
+        });
+        reader.readAsArrayBuffer(file);
+      });
+      this.on("success", function(file) {
+        $("#filedropzone").addClass("success");
+      });
+      this.on("error", function(file, msg) {
+        $("#filedropzone").addClass("error");
+      });
+    }
+  });
+};
+
+$(function() {
+  Upload.initialize_all();
+});
+
+export default Upload

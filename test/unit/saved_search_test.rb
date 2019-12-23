@@ -60,58 +60,83 @@ class SavedSearchTest < ActiveSupport::TestCase
   context ".post_ids_for" do
     context "with a label" do
       setup do
-        SavedSearch.expects(:queries_for).with(1, label: "blah").returns(%w(a b c))
+        create(:saved_search, query: "a", labels: ["blah"], user: @user)
+        create(:saved_search, query: "b", labels: ["blah"], user: @user)
+        create(:saved_search, query: "c", labels: ["blah"], user: @user)
+
+        create(:post, tag_string: "a")
+        create(:post, tag_string: "b")
+        create(:post, tag_string: "c")
       end
 
       context "without a primed cache" do
-        should "delay processing three times" do
-          SavedSearch.expects(:populate).times(3)
-          post_ids = SavedSearch.post_ids_for(1, label: "blah")
-          assert_equal([], post_ids)
-        end
-      end
-
-      context "with a primed cached" do
-        setup do
-          @mock_redis.sadd("search:a", 1)
-          @mock_redis.sadd("search:b", 2)
-          @mock_redis.sadd("search:c", 3)
-        end
-
-        should "fetch the post ids" do
-          SavedSearch.expects(:delay).never
-          post_ids = SavedSearch.post_ids_for(1, label: "blah")
-          assert_equal([1,2,3], post_ids)
-        end
-      end
-    end
-
-    context "without a label" do
-      setup do
-        SavedSearch.expects(:queries_for).with(1, label: nil).returns(%w(a b c))
-      end
-
-      context "without a primed cache" do
-        should "delay processing three times" do
-          SavedSearch.expects(:populate).times(3)
-          post_ids = SavedSearch.post_ids_for(1)
+        should "return nothing" do
+          post_ids = SavedSearch.post_ids_for(@user.id, label: "blah")
           assert_equal([], post_ids)
         end
       end
 
       context "with a primed cache" do
         setup do
-          @mock_redis.sadd("search:a", 1)
-          @mock_redis.sadd("search:b", 2)
-          @mock_redis.sadd("search:c", 3)
+          perform_enqueued_jobs do
+            SavedSearch.post_ids_for(@user.id, label: "blah")
+          end
         end
 
         should "fetch the post ids" do
-          SavedSearch.expects(:delay).never
-          post_ids = SavedSearch.post_ids_for(1)
-          assert_equal([1,2,3], post_ids)
+          post_ids = SavedSearch.post_ids_for(@user.id, label: "blah")
+          assert_equal(Post.pluck(:id).sort, post_ids.sort)
         end
       end
+    end
+
+    context "without a label" do
+      setup do
+        create(:saved_search, query: "a", user: @user)
+        create(:saved_search, query: "b", user: @user)
+        create(:saved_search, query: "c", user: @user)
+
+        create(:post, tag_string: "a")
+        create(:post, tag_string: "b")
+        create(:post, tag_string: "c")
+      end
+
+      context "without a primed cache" do
+        should "return nothing" do
+          post_ids = SavedSearch.post_ids_for(@user.id)
+          assert_equal([], post_ids)
+        end
+      end
+
+      context "with a primed cache" do
+        setup do
+          perform_enqueued_jobs do
+            SavedSearch.post_ids_for(@user.id)
+          end
+        end
+
+        should "fetch the post ids" do
+          post_ids = SavedSearch.post_ids_for(@user.id)
+          assert_equal(Post.pluck(:id).sort, post_ids.sort)
+        end
+      end
+    end
+  end
+
+  context "Populating a saved search" do
+    setup do
+      @saved_search = create(:saved_search, query: "bkub", user: @user)
+      @post = create(:post, tag_string: "bkub")
+    end
+
+    should "work for a single tag search" do
+      SavedSearch.populate("bkub")
+      assert_equal([@post.id], SavedSearch.post_ids_for(@user.id))
+    end
+
+    should "work for a tag search returning no posts" do
+      SavedSearch.populate("does_not_exist")
+      assert_equal([], SavedSearch.post_ids_for(@user.id))
     end
   end
 
@@ -119,11 +144,6 @@ class SavedSearchTest < ActiveSupport::TestCase
     setup do
       FactoryBot.create(:tag_alias, antecedent_name: "zzz", consequent_name: "yyy", creator: @user)
       @saved_search = @user.saved_searches.create(query: " ZZZ xxx ")
-    end
-
-    should "update the bitpref on the user" do
-      @user.reload
-      assert(@user.has_saved_searches?, "should have saved_searches bitpref set")
     end
 
     should "normalize the query aside from the order" do
@@ -136,18 +156,6 @@ class SavedSearchTest < ActiveSupport::TestCase
 
       @saved_search.labels = ["Artist 1", "Artist 2"]
       assert_equal(%w[artist_1 artist_2], @saved_search.labels)
-    end
-  end
-
-  context "Destroying a saved search" do
-    setup do
-      @saved_search = @user.saved_searches.create(query: "xxx")
-      @saved_search.destroy
-    end
-
-    should "update the bitpref on the user" do
-      @user.reload
-      assert(!@user.has_saved_searches?, "should not have the saved_searches bitpref set")
     end
   end
 

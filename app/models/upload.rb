@@ -1,7 +1,7 @@
 require "tmpdir"
 
 class Upload < ApplicationRecord
-  class Error < Exception ; end
+  class Error < Exception; end
 
   class FileValidator < ActiveModel::Validator
     def validate(record)
@@ -54,7 +54,6 @@ class Upload < ApplicationRecord
     end
   end
 
-
   attr_accessor :as_pending, :replaced_post, :file
   belongs_to :uploader, :class_name => "User"
   belongs_to :post, optional: true
@@ -64,15 +63,24 @@ class Upload < ApplicationRecord
   validate :uploader_is_not_limited, on: :create
   # validates :source, format: { with: /\Ahttps?/ }, if: ->(record) {record.file.blank?}, on: :create
   validates :rating, inclusion: { in: %w(q e s) }, allow_nil: true
-  validates :md5, confirmation: true, if: -> (rec) { rec.md5_confirmation.present? }
+  validates :md5, confirmation: true, if: ->(rec) { rec.md5_confirmation.present? }
   validates_with FileValidator, on: :file
   serialize :context, JSON
+
+  after_destroy_commit :delete_files
+
   scope :preprocessed, -> { where(status: "preprocessed") }
+
+  api_attributes including: [:uploader_name]
 
   def initialize_attributes
     self.uploader_id = CurrentUser.id
     self.uploader_ip_addr = CurrentUser.ip_addr
     self.server = Danbooru.config.server_host
+  end
+
+  def self.prune!(date = 1.day.ago)
+    where("created_at < ?", date).lock.destroy_all
   end
 
   module FileMethods
@@ -90,6 +98,21 @@ class Upload < ApplicationRecord
 
     def is_ugoira?
       %w(zip).include?(file_ext)
+    end
+
+    def delete_files
+      # md5 is blank if the upload errored out before downloading the file.
+      if is_completed? || md5.blank? || Upload.where(md5: md5).exists? || Post.where(md5: md5).exists?
+        return
+      end
+
+      DanbooruLogger.info("Uploads: Deleting files for upload md5=#{md5}", upload: as_json)
+      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :original)
+      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :large)
+      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :preview)
+      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :original)
+      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :large)
+      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :preview)
     end
   end
 
@@ -155,7 +178,7 @@ class Upload < ApplicationRecord
 
   module UploaderMethods
     def uploader_name
-      User.id_to_name(uploader_id)
+      uploader.name
     end
   end
 
@@ -174,49 +197,19 @@ class Upload < ApplicationRecord
       where(:status => "pending")
     end
 
-    def post_tags_match(query)
-      where(post_id: PostQueryBuilder.new(query).build.reorder(""))
-    end
-
     def search(params)
       q = super
 
-      if params[:uploader_id].present?
-        q = q.attribute_matches(:uploader_id, params[:uploader_id])
-      end
-
-      if params[:uploader_name].present?
-        q = q.where(uploader_id: User.name_to_id(params[:uploader_name]))
-      end
-
-      if params[:source].present?
-        q = q.where(source: params[:source])
-      end
+      q = q.search_attributes(params, :uploader, :post, :source, :rating, :parent_id, :server, :md5, :server, :file_ext, :file_size, :image_width, :image_height, :referer_url)
 
       if params[:source_matches].present?
         q = q.where("uploads.source LIKE ? ESCAPE E'\\\\'", params[:source_matches].to_escaped_for_sql_like)
-      end
-
-      if params[:rating].present?
-        q = q.where(rating: params[:rating])
-      end
-
-      if params[:parent_id].present?
-        q = q.attribute_matches(:rating, params[:parent_id])
-      end
-
-      if params[:post_id].present?
-        q = q.attribute_matches(:post_id, params[:post_id])
       end
 
       if params[:has_post].to_s.truthy?
         q = q.where.not(post_id: nil)
       elsif params[:has_post].to_s.falsy?
         q = q.where(post_id: nil)
-      end
-
-      if params[:post_tags_match].present?
-        q = q.post_tags_match(params[:post_tags_match])
       end
 
       if params[:status].present?
@@ -231,17 +224,7 @@ class Upload < ApplicationRecord
         q = q.where("uploads.tag_string LIKE ? ESCAPE E'\\\\'", params[:tag_string].to_escaped_for_sql_like)
       end
 
-      if params[:server].present?
-        q = q.where(server: params[:server])
-      end
-
       q.apply_default_order(params)
-    end
-  end
-
-  module ApiMethods
-    def method_attributes
-      super + [:uploader_name]
     end
   end
 
@@ -250,15 +233,11 @@ class Upload < ApplicationRecord
   include UploaderMethods
   include VideoMethods
   extend SearchMethods
-  include ApiMethods
   include SourceMethods
 
   def uploader_is_not_limited
     if !uploader.can_upload?
-      self.errors.add(:uploader, uploader.upload_limited_reason)
-      return false
-    else
-      return true
+      errors.add(:uploader, uploader.upload_limited_reason)
     end
   end
 

@@ -1,7 +1,8 @@
 @import "../base/000_vars.scss";
 
 body {
-  background-color: #FFF;
+  color: var(--text-color);
+  background-color: var(--body-background-color);
   font-family: $base_font_family;
   font-size: 87.5%;
   line-height: 1.25em;
@@ -9,13 +10,6 @@ body {
 
 abbr[title=required] {
   display: none;
-}
-
-blockquote {
-  margin: 0 0 1em 0;
-  padding: 1em 1em 0.2em;
-  border: 1px solid #666;
-  background: #EEE;
 }
 
 code {
@@ -34,6 +28,7 @@ dt {
 h1, h2, h3, h4, h5, h6 {
   font-family: Tahoma, Verdana, Helvetica, sans-serif;
   line-height: 1.5em;
+  color: var(--header-color);
 }
 
 h1 {
@@ -62,6 +57,44 @@ img {
   vertical-align: middle;
 }
 
+input, select, textarea {
+  background: var(--form-input-background);
+  border: var(--form-input-border);
+  color: var(--form-input-text-color);
+  padding-left: 0.25em;
+}
+
+input[type="button"], input[type="submit"], button {
+  border-radius: 3px;
+  padding: 0.25em 1em;
+
+  background: var(--form-button-background);
+  border: var(--form-button-border);
+  color: var(--form-button-text-color);
+
+  &:hover {
+    box-shadow: var(--form-button-hover-box-shadow);
+    background: var(--form-button-hover-background);
+  }
+
+  &:active {
+    box-shadow: var(--form-button-hover-box-shadow);
+    background: var(--form-button-active-background);
+  }
+}
+
+/* placeholder text in <input type="text"> elements */
+::placeholder {
+  color: var(--form-input-placeholder-text-color);
+  font-size: 0.9em;
+  padding-left: 0.5em;
+}
+
+/* Highlight link anchor targets (e.g. /forum_topics/123#forum_post_456). Use !important to override even table row backgrounds. */
+:target {
+  background: var(--target-background) !important;
+}
+
 menu {
   margin: 0;
   padding: 0;
@@ -74,7 +107,6 @@ menu {
   li {
     margin: 0;
     padding: 0 0.2em;
-    list-style-type: none;
     display: inline;
   }
 }
@@ -87,19 +119,39 @@ table tfoot {
   margin-top: 2em;
 }
 
-.hint {
-  color: #666;
+.fineprint {
+  color: var(--muted-text-color);
   font-style: italic;
-  max-width: 70%;
-}
-
-.tn {
   font-size: 0.8em;
-  color: gray;
 }
 
-p.info {
-  color: #AAA;
-  font-style: italic;
-  font-size: 80%;
+.fixed-width-container {
+  max-width: 70em;
+}
+
+.column-container {
+  display: flex;
+
+  .column-expand { flex: 1; }
+  .column-shrink { flex: 0; }
+  @media (max-width: 660px) { display: block; }
+}
+
+ul.list-bulleted {
+  list-style: inside disc;
+}
+
+ul.list-inline {
+  &, li {
+    display: inline;
+  }
+}
+
+.mobile-only {
+  display: none;
+  @media (max-width: 660px) { display: initial; }
+}
+
+.desktop-only {
+  @media (max-width: 660px) { display: none; }
 }

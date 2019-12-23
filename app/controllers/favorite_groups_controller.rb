@@ -3,12 +3,8 @@ class FavoriteGroupsController < ApplicationController
   respond_to :html, :xml, :json, :js
 
   def index
-    @favorite_groups = FavoriteGroup.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@favorite_groups) do |format|
-      format.xml do
-        render :xml => @favorite_groups.to_xml(:root => "favorite-groups")
-      end
-    end
+    @favorite_groups = FavoriteGroup.paginated_search(params)
+    respond_with(@favorite_groups)
   end
 
   def show
@@ -78,6 +74,6 @@ class FavoriteGroupsController < ApplicationController
   end
 
   def favgroup_params
-    params.fetch(:favorite_group, {}).permit(%i[name post_ids is_public])
+    params.fetch(:favorite_group, {}).permit(%i[name post_ids is_public], post_id_array: [])
   end
 end

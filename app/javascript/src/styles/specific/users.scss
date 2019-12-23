@@ -1,23 +1,7 @@
-@import "../base/000_vars.scss";
-
 div#c-users {
   div#a-show {
     div.box {
-      h2, h3 {
-        color: #333;
-      }
-
       margin-bottom: 2em;
-    }
-
-    /* clearfix hacks */
-    div.box:before, div.box:after {
-      content: "";
-      display: table;
-    }
-
-    div.box:after {
-      clear: both;
     }
 
     table.user-statistics {
@@ -56,22 +40,8 @@ div#c-users {
       margin-bottom: 2em;
     }
 
-    div.input span.hint {
-      display: block;
-      max-width: 70%;
-    }
-
     .active {
-      color: black;
-    }
-  }
-
-  div#a-new {
-    max-width: 60em;
-
-    p {
-      font-size: 1.2em;
-      line-height: 1.4em;
+      color: var(--text-color);
     }
   }
 }

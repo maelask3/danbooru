@@ -1,65 +1,13 @@
 @import "../base/000_vars.scss";
 
-div#search {
-  margin-bottom: 1em;
-}
-
-div#search-box button {
-  -webkit-appearance: button;
-  border: 1px solid $link_color;
-  background-color: $link_color;
-  color: #FFF;
-  &:hover, &:focus {
-    border: 1px solid $link_hover_color;
-    background-color: $link_hover_color;
-  }
-}
-
 div#page {
   overflow: visible;
   margin: 0 20px;
   padding: 0 10px;
 
-  div#upgrade-account-notice, div#sign-up-notice, div#tos-notice, div#ban-notice, div#dmail-notice, div#mod-notice {
-    margin: 1em 0;
-    padding: 1em;
-    text-align: center;
-    position: relative;
-
-    h1 {
-      font-size: $h2_size;
-    }
-
-    p {
-      margin: 0;
-    }
-  }
-
   aside#sidebar {
-    width: 15em;
-    float: left;
-
     h1 {
       font-size: $h3_size;
-    }
-
-    ul {
-      list-style-type: none;
-    }
-
-    input[type=text] {
-      /* ensure expanded search box renders above post thumbnails. */
-      z-index: 1;
-      position: relative;
-    }
-
-    button[type=submit] {
-      padding: 2px 6px;
-      background: #EEE;
-    }
-
-    #search-box button[type=submit] {
-      border-left: none;
     }
 
     #options-box i.fa-bookmark {
@@ -73,20 +21,41 @@ div#page {
 
   section#content {
     overflow: visible;
-    margin-left: 15em;
-    padding-left: 1em;
   }
 }
 
 footer#page-footer {
-  clear: both;
   width: 100%;
   margin-top: 1em;
   text-align: center;
   padding: 1em 0 1em;
-  border-top: 1px solid #EEE;
+  border-top: var(--footer-border);
 }
 
-div.clearfix {
-  clear: both;
+.sidebar-container {
+  display: flex;
+
+  #sidebar {
+    flex: 0;
+    min-width: 20em;
+  }
+
+  #content {
+    flex: 1;
+    padding-left: 1em;
+    min-width: 0;
+  }
+
+  @media (max-width: 660px) {
+    flex-direction: column;
+
+    #content {
+      order: 1;
+      padding: 0;
+    }
+
+    #sidebar {
+      order: 2;
+    }
+  }
 }

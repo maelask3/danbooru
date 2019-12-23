@@ -1,18 +1,15 @@
 class PoolVersionsController < ApplicationController
   respond_to :html, :xml, :json
   before_action :check_availabililty
+  around_action :set_timeout
 
   def index
     if params[:search] && params[:search][:pool_id].present?
       @pool = Pool.find(params[:search][:pool_id])
     end
 
-    @pool_versions = PoolArchive.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@pool_versions) do |format|
-      format.xml do
-        render :xml => @pool_versions.to_xml(:root => "pool-versions")
-      end
-    end
+    @pool_versions = PoolArchive.paginated_search(params)
+    respond_with(@pool_versions)
   end
 
   def diff
@@ -25,7 +22,14 @@ class PoolVersionsController < ApplicationController
     end
   end
 
-private
+  private
+
+  def set_timeout
+    PoolArchive.connection.execute("SET statement_timeout = #{CurrentUser.user.statement_timeout}")
+    yield
+  ensure
+    PoolArchive.connection.execute("SET statement_timeout = 0")
+  end
 
   def check_availabililty
     if !PoolArchive.enabled?

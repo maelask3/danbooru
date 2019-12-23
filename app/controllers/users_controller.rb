@@ -13,25 +13,29 @@ class UsersController < ApplicationController
     respond_with(@user)
   end
 
+  def settings
+    @user = CurrentUser.user
+
+    if @user.is_anonymous?
+      redirect_to login_path(url: settings_path)
+    else
+      params[:action] = "edit"
+      respond_with(@user, template: "users/edit")
+    end
+  end
+
   def index
     if params[:name].present?
-      @user = User.find_by_name(params[:name])
-      if @user.nil?
-        raise "No user found with name: #{params[:name]}"
-      else
-        redirect_to user_path(@user)
-      end
+      @user = User.find_by_name!(params[:name])
+      redirect_to user_path(@user)
+      return
+    end
+
+    @users = User.paginated_search(params)
+    if params[:redirect].to_s.truthy? && @users.one? && User.normalize_name(@users.first.name) == User.normalize_name(params[:search][:name_matches])
+      redirect_to @users.first
     else
-      @users = User.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-      respond_with(@users) do |format|
-        format.xml do
-          render :xml => @users.to_xml(:root => "users")
-        end
-        format.json do
-          render json: @users.to_json
-          expires_in params[:expiry].to_i.days if params[:expiry]
-        end
-      end
+      respond_with @users
     end
   end
 
@@ -40,8 +44,20 @@ class UsersController < ApplicationController
 
   def show
     @user = User.find(params[:id])
-    @presenter = UserPresenter.new(@user)
     respond_with(@user, methods: @user.full_attributes)
+  end
+
+  def profile
+    @user = CurrentUser.user
+
+    if @user.is_member?
+      params[:action] = "show"
+      respond_with(@user, methods: @user.full_attributes, template: "users/show")
+    elsif request.format.html?
+      redirect_to login_path(url: profile_path)
+    else
+      raise ActiveRecord::RecordNotFound
+    end
   end
 
   def create
@@ -75,24 +91,29 @@ class UsersController < ApplicationController
     end
   end
 
+  def custom_style
+    @css = CustomCss.parse(CurrentUser.user.custom_style)
+    expires_in 10.years
+  end
+
   private
 
   def check_privilege(user)
-    raise User::PrivilegeError unless (user.id == CurrentUser.id || CurrentUser.is_admin?)
+    raise User::PrivilegeError unless user.id == CurrentUser.id || CurrentUser.is_admin?
   end
 
   def user_params(context)
     permitted_params = %i[
       password old_password password_confirmation email
       comment_threshold default_image_size favorite_tags blacklisted_tags
-      time_zone per_page custom_style
+      time_zone per_page custom_style theme
 
       receive_email_notifications always_resize_images enable_post_navigation
       new_post_navigation_layout enable_privacy_mode
       enable_sequential_post_navigation hide_deleted_posts style_usernames
       enable_auto_complete show_deleted_children
       disable_categorized_saved_searches disable_tagged_filenames
-      enable_recent_searches disable_cropped_thumbnails disable_mobile_gestures
+      disable_cropped_thumbnails disable_mobile_gestures
       enable_safe_mode disable_responsive_mode disable_post_tooltips
       enable_recommended_posts opt_out_tracking
     ]

@@ -1,6 +1,9 @@
+import CurrentUser from './current_user'
 import Utility from './utility'
 
 let Note = {
+  HIDE_DELAY: 250,
+
   Box: {
     create: function(id) {
       var $inner_border = $('<div/>');
@@ -264,7 +267,7 @@ let Note = {
 
     hide: function(id) {
       var $note_body = Note.Body.find(id);
-      Note.timeouts.push($.timeout(250).done(function() {$note_body.hide();}));
+      Note.timeouts.push(setTimeout(() => $note_body.hide(), Note.HIDE_DELAY));
     },
 
     hide_all: function() {
@@ -346,7 +349,7 @@ let Note = {
         e.stopPropagation();
       });
 
-      if (Utility.meta("current-user-name") !== "Anonymous") {
+      if (CurrentUser.data("is-anonymous") === false) {
         $note_body.on("click.danbooru", function(e) {
           if (e.target.tagName !== "A") {
             var $note_body_inner = $(e.currentTarget);
@@ -571,7 +574,7 @@ let Note = {
     start: function(e) {
       e.preventDefault();
 
-      if (Utility.meta("current-user-id") === "") {
+      if (CurrentUser.data("is-anonymous")) {
         Utility.notice("You must be logged in to edit notes");
         return;
       }
@@ -762,10 +765,7 @@ let Note = {
   },
 
   clear_timeouts: function() {
-    $.each(Note.timeouts, function(i, v) {
-      v.clear();
-    });
-
+    Note.timeouts.forEach(clearTimeout);
     Note.timeouts = [];
   },
 

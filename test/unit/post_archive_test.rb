@@ -5,7 +5,7 @@ class PostArchiveTest < ActiveSupport::TestCase
 
   context "A post" do
     setup do
-      Timecop.travel(1.month.ago) do
+      travel_to(1.month.ago) do
         @user = FactoryBot.create(:user)
       end
       CurrentUser.user = @user
@@ -21,8 +21,8 @@ class PostArchiveTest < ActiveSupport::TestCase
       setup do
         PostArchive.sqs_service.stubs(:merge?).returns(false)
         @post = FactoryBot.create(:post, :tag_string => "1")
-        @post.update_attributes(:tag_string => "1 2")
-        @post.update_attributes(:tag_string => "2 3")
+        @post.update(tag_string: "1 2")
+        @post.update(tag_string: "2 3")
       end
 
       subject { @post.versions.sort_by(&:id)[1] }
@@ -38,8 +38,8 @@ class PostArchiveTest < ActiveSupport::TestCase
       setup do
         PostArchive.sqs_service.stubs(:merge?).returns(false)
         @post = FactoryBot.create(:post, :tag_string => "1")
-        @post.update_attributes(:tag_string => "1 2")
-        @post.update_attributes(:tag_string => "2 3")
+        @post.update(tag_string: "1 2")
+        @post.update(tag_string: "2 3")
       end
 
       context "a version record" do
@@ -62,7 +62,7 @@ class PostArchiveTest < ActiveSupport::TestCase
 
       should "also create a version" do
         assert_equal(1, @post.versions.size)
-        @version = @post.versions.sort_by(&:id).last
+        @version = @post.versions.max_by(&:id)
         assert_equal("aaa bbb ccc", @version.tags)
         assert_equal(@post.rating, @version.rating)
         assert_equal(@post.parent_id, @version.parent_id)
@@ -79,7 +79,7 @@ class PostArchiveTest < ActiveSupport::TestCase
 
       should "create a version" do
         assert_equal("tagme", @post.tag_string)
-        assert_equal("pool:#{@pool.id} pool:series", @post.pool_string)
+        assert_equal("pool:#{@pool.id}", @post.pool_string)
 
         assert_equal(1, @post.versions.size)
         assert_equal("tagme", @post.versions.last.tags)
@@ -94,7 +94,7 @@ class PostArchiveTest < ActiveSupport::TestCase
 
       should "delete the previous version" do
         assert_equal(1, @post.versions.count)
-        @post.update_attributes(:tag_string => "bbb ccc xxx", :source => "")
+        @post.update(tag_string: "bbb ccc xxx", source: "")
         @post.reload
         assert_equal(1, @post.versions.count)
       end
@@ -104,12 +104,12 @@ class PostArchiveTest < ActiveSupport::TestCase
       setup do
         PostArchive.sqs_service.stubs(:merge?).returns(false)
         @post = FactoryBot.create(:post, :tag_string => "aaa bbb ccc", :rating => "q", :source => "xyz")
-        @post.update_attributes(:tag_string => "bbb ccc xxx", :source => "")
+        @post.update(tag_string: "bbb ccc xxx", source: "")
       end
 
       should "also create a version" do
         assert_equal(2, @post.versions.size)
-        @version = @post.versions.sort_by(&:id).last
+        @version = @post.versions.max_by(&:id)
         assert_equal("bbb ccc xxx", @version.tags)
         assert_equal("q", @version.rating)
         assert_equal("", @version.source)
@@ -127,14 +127,14 @@ class PostArchiveTest < ActiveSupport::TestCase
       should "should create a version if the rating changes" do
         assert_difference("@post.versions.size", 1) do
           @post.update(rating: "s")
-          assert_equal("s", @post.versions.sort_by(&:id).last.rating)
+          assert_equal("s", @post.versions.max_by(&:id).rating)
         end
       end
 
       should "should create a version if the source changes" do
         assert_difference("@post.versions.size", 1) do
           @post.update(source: "blah")
-          assert_equal("blah", @post.versions.sort_by(&:id).last.source)
+          assert_equal("blah", @post.versions.max_by(&:id).source)
         end
       end
 
@@ -142,14 +142,14 @@ class PostArchiveTest < ActiveSupport::TestCase
         assert_difference("@post.versions.size", 1) do
           @parent = FactoryBot.create(:post)
           @post.update(parent_id: @parent.id)
-          assert_equal(@parent.id, @post.versions.sort_by(&:id).last.parent_id)
+          assert_equal(@parent.id, @post.versions.max_by(&:id).parent_id)
         end
       end
 
       should "should create a version if the tags change" do
         assert_difference("@post.versions.size", 1) do
           @post.update(tag_string: "blah")
-          assert_equal("blah", @post.versions.sort_by(&:id).last.tags)
+          assert_equal("blah", @post.versions.max_by(&:id).tags)
         end
       end
     end

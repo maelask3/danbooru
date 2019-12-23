@@ -8,6 +8,7 @@
 # * https://www.pixiv.net/member_illust.php?mode=medium&illust_id=46324488
 # * https://www.pixiv.net/member_illust.php?mode=manga&illust_id=46324488
 # * https://www.pixiv.net/member_illust.php?mode=manga_big&illust_id=46324488&page=0
+# * https://www.pixiv.net/en/artworks/46324488
 #
 # * https://www.pixiv.net/member.php?id=339253
 # * https://www.pixiv.net/member_illust.php?id=339253&type=illust
@@ -68,7 +69,7 @@ module Sources
         if text.nil?
           return nil
         end
-        
+
         text = text.gsub(%r!https?://www\.pixiv\.net/member_illust\.php\?mode=medium&illust_id=([0-9]+)!i) do |match|
           pixiv_id = $1
           %(pixiv ##{pixiv_id} "»":[/posts?tags=pixiv:#{pixiv_id}])
@@ -127,15 +128,14 @@ module Sources
         end
 
         if illust_id.present?
-          return "http://www.pixiv.net/member_illust.php?mode=medium&illust_id=#{illust_id}"
+          return "https://www.pixiv.net/artworks/#{illust_id}"
         end
 
         return url
-
       rescue PixivApiClient::BadIDError
         nil
       end
-      
+
       def canonical_url
         return image_url
       end
@@ -182,7 +182,7 @@ module Sources
       rescue PixivApiClient::BadIDError
         nil
       end
-      
+
       def headers
         if fanbox_id.present?
           # need the session to download fanbox images
@@ -235,8 +235,6 @@ module Sources
         illust_id.present? ? "pixiv:#{illust_id}" : "source:#{canonical_url}"
       end
 
-    public
-
       def image_urls_sub
         if url =~ FANBOX_IMAGE
           return [url]
@@ -270,6 +268,10 @@ module Sources
           # http://www.pixiv.net/member_illust.php?mode=manga_big&illust_id=18557054&page=1
           if url.host == "www.pixiv.net" && url.path == "/member_illust.php" && url.query_values["illust_id"].present?
             return url.query_values["illust_id"].to_i
+
+          # http://www.pixiv.net/en/artworks/46324488
+          elsif url.host == "www.pixiv.net" && url.path =~ %r!\A/(?:en/)?artworks/(?<illust_id>\d+)!i
+            return $~[:illust_id].to_i
 
           # http://www.pixiv.net/i/18557054
           elsif url.host == "www.pixiv.net" && url.path =~ %r!\A/i/(?<illust_id>\d+)\z!i

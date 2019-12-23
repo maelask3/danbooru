@@ -1,13 +1,12 @@
 require 'danbooru/has_bit_flags'
-require 'google/apis/pubsub_v1'
 
 class Post < ApplicationRecord
-  class ApprovalError < Exception ; end
-  class DisapprovalError < Exception ; end
-  class RevertError < Exception ; end
-  class SearchError < Exception ; end
-  class DeletionError < Exception ; end
-  class TimeoutError < Exception ; end
+  class ApprovalError < Exception; end
+  class DisapprovalError < Exception; end
+  class RevertError < Exception; end
+  class SearchError < Exception; end
+  class DeletionError < Exception; end
+  class TimeoutError < Exception; end
 
   # Tags to copy when copying notes.
   NOTE_COPY_TAGS = %w[translated partially_translated check_translation translation_request reverse_translation]
@@ -21,7 +20,6 @@ class Post < ApplicationRecord
   before_validation :remove_parent_loops
   validates_uniqueness_of :md5, :on => :create, message: ->(obj, data) { "duplicate: #{Post.find_by_md5(obj.md5).id}"}
   validates_inclusion_of :rating, in: %w(s q e), message: "rating must be s, q, or e"
-  validate :tag_names_are_valid
   validate :added_tags_are_valid
   validate :removed_tags_are_valid
   validate :has_artist_tag
@@ -31,7 +29,6 @@ class Post < ApplicationRecord
   validate :updater_can_change_rating
   before_save :update_tag_post_counts
   before_save :set_tag_counts
-  before_save :set_pool_category_pseudo_tags
   before_create :autoban
   after_save :create_version
   after_save :update_parent_on_save
@@ -39,7 +36,6 @@ class Post < ApplicationRecord
   after_commit :delete_files, :on => :destroy
   after_commit :remove_iqdb_async, :on => :destroy
   after_commit :update_iqdb_async, :on => :create
-  after_commit :notify_pubsub
 
   belongs_to :updater, :class_name => "User", optional: true # this is handled in versions
   belongs_to :approver, class_name: "User", optional: true
@@ -52,7 +48,7 @@ class Post < ApplicationRecord
   has_many :appeals, :class_name => "PostAppeal", :dependent => :destroy
   has_many :votes, :class_name => "PostVote", :dependent => :destroy
   has_many :notes, :dependent => :destroy
-  has_many :comments, -> {includes(:creator, :updater).order("comments.id")}, :dependent => :destroy
+  has_many :comments, -> {order("comments.id")}, :dependent => :destroy
   has_many :children, -> {order("posts.id")}, :class_name => "Post", :foreign_key => "parent_id"
   has_many :approvals, :class_name => "PostApproval", :dependent => :destroy
   has_many :disapprovals, :class_name => "PostDisapproval", :dependent => :destroy
@@ -81,15 +77,11 @@ class Post < ApplicationRecord
         Danbooru.config.backup_storage_manager.delete_file(post_id, md5, file_ext, :original)
         Danbooru.config.backup_storage_manager.delete_file(post_id, md5, file_ext, :large)
         Danbooru.config.backup_storage_manager.delete_file(post_id, md5, file_ext, :preview)
-
-        if Danbooru.config.cloudflare_key
-          CloudflareService.new.delete(md5, file_ext)
-        end
       end
     end
 
     def queue_delete_files(grace_period)
-      Post.delay(queue: "default", run_at: Time.now + grace_period).delete_files(id, md5, file_ext)
+      DeletePostFilesJob.set(wait: grace_period).perform_later(id, md5, file_ext)
     end
 
     def delete_files
@@ -230,9 +222,7 @@ class Post < ApplicationRecord
       is_image? && image_width.present? && image_width > Danbooru.config.large_image_width
     end
 
-    def has_large
-      !!has_large?
-    end
+    alias has_large has_large?
 
     def large_image_width
       if has_large?
@@ -344,17 +334,15 @@ class Post < ApplicationRecord
     end
 
     def normalized_source
+      if pixiv_id.present?
+        return "https://www.pixiv.net/artworks/#{pixiv_id}"
+      end
+
       case source
-      when %r{\Ahttps?://img\d+\.pixiv\.net/img/[^\/]+/(\d+)}i, 
-           %r{\Ahttps?://i\d\.pixiv\.net/img\d+/img/[^\/]+/(\d+)}i
-        "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=#{$1}"
+      when %r{\Ahttps?://twitter.com/[^/]+/status/(\d+)\z}i
+        "https://twitter.com/i/web/status/#{$1}"
 
-      when %r{\Ahttps?://(?:i\d+\.pixiv\.net|i\.pximg\.net)/img-(?:master|original)/img/(?:\d+\/)+(\d+)_p}i,
-           %r{\Ahttps?://(?:i\d+\.pixiv\.net|i\.pximg\.net)/c/\d+x\d+/img-master/img/(?:\d+\/)+(\d+)_p}i,
-           %r{\Ahttps?://(?:i\d+\.pixiv\.net|i\.pximg\.net)/img-zip-ugoira/img/(?:\d+\/)+(\d+)_ugoira\d+x\d+\.zip}i
-        "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=#{$1}"
-
-      when %r{\Ahttps?://lohas\.nicoseiga\.jp/priv/(\d+)\?e=\d+&h=[a-f0-9]+}i, 
+      when %r{\Ahttps?://lohas\.nicoseiga\.jp/priv/(\d+)\?e=\d+&h=[a-f0-9]+}i,
            %r{\Ahttps?://lohas\.nicoseiga\.jp/priv/[a-f0-9]+/\d+/(\d+)}i
         "https://seiga.nicovideo.jp/seiga/im#{$1}"
 
@@ -363,20 +351,6 @@ class Post < ApplicationRecord
         base_36_id = base_10_id.to_s(36)
         "https://twitpic.com/#{base_36_id}"
 
-      # http://orig12.deviantart.net/9b69/f/2017/023/7/c/illustration___tokyo_encount_oei__by_melisaongmiqin-dawi58s.png
-      # http://pre15.deviantart.net/81de/th/pre/f/2015/063/5/f/inha_by_inhaestudios-d8kfzm5.jpg
-      # http://th00.deviantart.net/fs71/PRE/f/2014/065/3/b/goruto_by_xyelkiltrox-d797tit.png
-      # http://th04.deviantart.net/fs70/300W/f/2009/364/4/d/Alphes_Mimic___Rika_by_Juriesute.png
-      # http://fc02.deviantart.net/fs48/f/2009/186/2/c/Animation_by_epe_tohri.swf
-      # http://fc08.deviantart.net/files/f/2007/120/c/9/Cool_Like_Me_by_47ness.jpg
-      # http://fc08.deviantart.net/images3/i/2004/088/8/f/Blackrose_for_MuzicFreq.jpg
-      # http://img04.deviantart.net/720b/i/2003/37/9/6/princess_peach.jpg
-      when %r{\Ahttps?://(?:(?:fc|th|pre|orig|img|prnt)\d{2}|origin-orig)\.deviantart\.net/.+/(?<title>[a-z0-9_]+)_by_(?<artist>[a-z0-9_]+)-d(?<id>[a-z0-9]+)\.}i
-        artist = $~[:artist].dasherize
-        title = $~[:title].titleize.strip.squeeze(" ").tr(" ", "-")
-        id = $~[:id].to_i(36)
-        "https://www.deviantart.com/#{artist}/art/#{title}-#{id}"
-
       # http://prnt00.deviantart.net/9b74/b/2016/101/4/468a9d89f52a835d4f6f1c8caca0dfb2-pnjfbh.jpg
       # http://fc00.deviantart.net/fs71/f/2013/234/d/8/d84e05f26f0695b1153e9dab3a962f16-d6j8jl9.jpg
       # http://th04.deviantart.net/fs71/PRE/f/2013/337/3/5/35081351f62b432f84eaeddeb4693caf-d6wlrqs.jpg
@@ -384,6 +358,9 @@ class Post < ApplicationRecord
       when %r{\Ahttps?://(?:fc|th|pre|orig|img|prnt)\d{2}\.deviantart\.net/.+/[a-f0-9]{32}-d(?<id>[a-z0-9]+)\.}i
         id = $~[:id].to_i(36)
         "https://deviantart.com/deviation/#{id}"
+
+      when Sources::Strategies::DeviantArt::ASSET
+        Sources::Strategies::DeviantArt.new(source).page_url_from_image_url || source
 
       when %r{\Ahttp://www\.karabako\.net/images(?:ub)?/karabako_(\d+)(?:_\d+)?\.}i
         "http://www.karabako.net/post/view/#{$1}"
@@ -431,7 +408,7 @@ class Post < ApplicationRecord
         subdomain = $1
         filename = $2
         "http://#{subdomain}.wikia.com/wiki/File:#{filename}"
-        
+
       when %r{\Ahttps?://vignette(?:\d*)\.wikia\.nocookie\.net/([^/]+)/images/[a-f0-9]/[a-f0-9]{2}/([^/]+)}i
         subdomain = $1
         filename = $2
@@ -447,34 +424,28 @@ class Post < ApplicationRecord
 
       when %r{\Ahttp://jpg\.nijigen-daiaru\.com/(\d+)}i
         "http://nijigen-daiaru.com/book.php?idb=#{$1}"
-        
+
       when %r{\Ahttps?://sozai\.doujinantena\.com/contents_jpg/([a-f0-9]{32})/}i
         "http://doujinantena.com/page.php?id=#{$1}"
 
       when %r{\Ahttp://rule34-(?:data-\d{3}|images)\.paheal\.net/(?:_images/)?([a-f0-9]{32})}i
         "https://rule34.paheal.net/post/list/md5:#{$1}/1"
-        
+
       when %r{\Ahttp://shimmie\.katawa-shoujo\.com/image/(\d+)}i
         "https://shimmie.katawa-shoujo.com/post/view/#{$1}"
-        
+
       when %r{\Ahttp://(?:(?:(?:img\d?|cdn)\.)?rule34\.xxx|img\.booru\.org/(?:rule34|r34))(?:/(?:img/rule34|r34))?/{1,2}images/\d+/(?:[a-f0-9]{32}|[a-f0-9]{40})\.}i
         "https://rule34.xxx/index.php?page=post&s=list&md5=#{md5}"
-        
-      when %r{\Ahttps?://(?:s3\.amazonaws\.com/imgly_production|img\.ly/system/uploads)/((?:\d{3}/){3}|\d+/)}i
-        imgly_id = $1
-        imgly_id = imgly_id.gsub(/[^0-9]/, '')
-        base_62 = imgly_id.to_i.encode62
-        "https://img.ly/#{base_62}"
-        
+
       when %r{(\Ahttp://.+)/diarypro/d(?:ata/upfile/|iary\.cgi\?mode=image&upfile=)(\d+)}i
         base_url = $1
         entry_no = $2
         "#{base_url}/diarypro/diary.cgi?no=#{entry_no}"
-        
+
       # XXX site is defunct
       when %r{\Ahttp://i(?:\d)?\.minus\.com/(?:i|j)([^\.]{12,})}i
         "http://minus.com/i/#{$1}"
-        
+
       when %r{\Ahttps?://pic0[1-4]\.nijie\.info/nijie_picture/(?:diff/main/)?\d+_(\d+)_(?:\d+{10}|\d+_\d+{14})}i
         "https://nijie.info/view.php?id=#{$1}"
 
@@ -502,16 +473,16 @@ class Post < ApplicationRecord
       # https://gfee_li.artstation.com/projects/asuka-7
       when %r{\Ahttps?://\w+\.artstation.com/(?:artwork|projects)/(?<project_id>[a-z0-9-]+)\z/}i
         "https://www.artstation.com/artwork/#{$~[:project_id]}"
-        
+
       when %r{\Ahttps?://(?:o|image-proxy-origin)\.twimg\.com/\d/proxy\.jpg\?t=(\w+)&}i
         str = Base64.decode64($1)
         url = URI.extract(str, ['http', 'https'])
         if url.any?
           url = url[0]
-          if (url =~ /^https?:\/\/twitpic.com\/show\/large\/[a-z0-9]+/i)
+          if url =~ /^https?:\/\/twitpic.com\/show\/large\/[a-z0-9]+/i
             url.gsub!(/show\/large\//, "")
             index = url.rindex('.')
-            url = url[0..index-1]
+            url = url[0..index - 1]
           end
           url
         else
@@ -551,7 +522,7 @@ class Post < ApplicationRecord
 
       url = Addressable::URI.parse(normalized_source)
       url.domain
-    rescue
+    rescue StandardError
       ""
     end
   end
@@ -585,7 +556,7 @@ class Post < ApplicationRecord
       decrement_tags = tag_array_was - tag_array
 
       decrement_tags_except_requests = decrement_tags.reject {|tag| tag == "tagme" || tag.end_with?("_request")}
-      if decrement_tags_except_requests.size > 0 && !CurrentUser.is_builder? && CurrentUser.created_at > 1.week.ago
+      if !decrement_tags_except_requests.empty? && !CurrentUser.is_builder? && CurrentUser.created_at > 1.week.ago
         self.errors.add(:updater_id, "must have an account at least 1 week old to remove tags")
         return false
       end
@@ -599,17 +570,17 @@ class Post < ApplicationRecord
       end
     end
 
-    def set_tag_count(category,tagcount)
-      self.send("tag_count_#{category}=",tagcount)
+    def set_tag_count(category, tagcount)
+      self.send("tag_count_#{category}=", tagcount)
     end
 
     def inc_tag_count(category)
-      set_tag_count(category,self.send("tag_count_#{category}") + 1)
+      set_tag_count(category, self.send("tag_count_#{category}") + 1)
     end
 
     def set_tag_counts(disable_cache = true)
       self.tag_count = 0
-      TagCategory.categories.each {|x| set_tag_count(x,0)}
+      TagCategory.categories.each {|x| set_tag_count(x, 0)}
       categories = Tag.categories_for(tag_array, :disable_caching => disable_cache)
       categories.each_value do |category|
         self.tag_count += 1
@@ -623,8 +594,8 @@ class Post < ApplicationRecord
       if old_tag_string
         # If someone else committed changes to this post before we did,
         # then try to merge the tag changes together.
-        current_tags = tag_array_was()
-        new_tags = tag_array()
+        current_tags = tag_array_was
+        new_tags = tag_array
         old_tags = Tag.scan_tags(old_tag_string)
 
         kept_tags = current_tags & new_tags
@@ -672,19 +643,23 @@ class Post < ApplicationRecord
       normalized_tags = add_automatic_tags(normalized_tags)
       normalized_tags = remove_invalid_tags(normalized_tags)
       normalized_tags = Tag.convert_cosplay_tags(normalized_tags)
-      normalized_tags = normalized_tags + Tag.create_for_list(TagImplication.automatic_tags_for(normalized_tags))
+      normalized_tags += Tag.create_for_list(TagImplication.automatic_tags_for(normalized_tags))
       normalized_tags = TagImplication.with_descendants(normalized_tags)
       normalized_tags = normalized_tags.compact.uniq.sort
       normalized_tags = Tag.create_for_list(normalized_tags)
       set_tag_string(normalized_tags.join(" "))
     end
 
-    def remove_invalid_tags(tags)
-      invalid_tags = Tag.invalid_cosplay_tags(tags)
-      if invalid_tags.present?
-        self.warnings[:base] << "The root tag must be a character tag: #{invalid_tags.map {|tag| "[b]#{tag}[/b]" }.join(", ")}"
+    def remove_invalid_tags(tag_names)
+      invalid_tags = tag_names.map { |name| Tag.new(name: name) }.select { |tag| tag.invalid?(:name) }
+
+      invalid_tags.each do |tag|
+        tag.errors.messages.each do |attribute, messages|
+          warnings[:base] << "Couldn't add tag: #{messages.join(';')}"
+        end
       end
-      tags - invalid_tags
+
+      tag_names - invalid_tags.map(&:name)
     end
 
     def remove_negated_tags(tags)
@@ -755,9 +730,9 @@ class Post < ApplicationRecord
 
     def apply_casesensitive_metatags(tags)
       casesensitive_metatags, tags = tags.partition {|x| x =~ /\A(?:source):/i}
-      #Reuse the following metatags after the post has been saved
+      # Reuse the following metatags after the post has been saved
       casesensitive_metatags += tags.select {|x| x =~ /\A(?:newpool):/i}
-      if casesensitive_metatags.length > 0
+      if !casesensitive_metatags.empty?
         case casesensitive_metatags[-1]
         when /^source:none$/i
           self.source = ""
@@ -848,19 +823,19 @@ class Post < ApplicationRecord
 
         when /^-favgroup:(\d+)$/i
           favgroup = FavoriteGroup.where("id = ?", $1.to_i).for_creator(CurrentUser.user.id).first
-          favgroup.remove!(id) if favgroup
+          favgroup&.remove!(id)
 
         when /^-favgroup:(.+)$/i
           favgroup = FavoriteGroup.named($1).for_creator(CurrentUser.user.id).first
-          favgroup.remove!(id) if favgroup
+          favgroup&.remove!(id)
 
         when /^favgroup:(\d+)$/i
           favgroup = FavoriteGroup.where("id = ?", $1.to_i).for_creator(CurrentUser.user.id).first
-          favgroup.add!(id) if favgroup
+          favgroup&.add!(id)
 
         when /^favgroup:(.+)$/i
           favgroup = FavoriteGroup.named($1).for_creator(CurrentUser.user.id).first
-          favgroup.add!(id) if favgroup
+          favgroup&.add!(id)
 
         end
       end
@@ -889,20 +864,20 @@ class Post < ApplicationRecord
           self.rating = $1
 
         when /^(-?)locked:notes?$/i
-          self.is_note_locked = ($1 != "-" ) if CurrentUser.is_builder?
+          self.is_note_locked = ($1 != "-") if CurrentUser.is_builder?
 
         when /^(-?)locked:rating$/i
-          self.is_rating_locked = ($1 != "-" ) if CurrentUser.is_builder?
+          self.is_rating_locked = ($1 != "-") if CurrentUser.is_builder?
 
         when /^(-?)locked:status$/i
-          self.is_status_locked = ($1 != "-" ) if CurrentUser.is_admin?
+          self.is_status_locked = ($1 != "-") if CurrentUser.is_admin?
 
         end
       end
     end
 
     def has_tag?(tag)
-      !!(tag_string =~ /(?:^| )(?:#{tag})(?:$| )/)
+      tag_string.match?(/(?:^| )(?:#{tag})(?:$| )/)
     end
 
     def add_tag(tag)
@@ -933,7 +908,6 @@ class Post < ApplicationRecord
     end
   end
 
-
   module FavoriteMethods
     def clean_fav_string?
       true
@@ -948,10 +922,10 @@ class Post < ApplicationRecord
     end
 
     def favorited_by?(user_id = CurrentUser.id)
-      !!(fav_string =~ /(?:\A| )fav:#{user_id}(?:\Z| )/)
+      fav_string.match?(/(?:\A| )fav:#{user_id}(?:\Z| )/)
     end
 
-    alias_method :is_favorited?, :favorited_by?
+    alias is_favorited? favorited_by?
 
     def append_user_to_fav_string(user_id)
       update_column(:fav_string, (fav_string + " fav:#{user_id}").strip)
@@ -989,13 +963,13 @@ class Post < ApplicationRecord
       ordered_users
     end
 
-    def favorite_groups(active_id=nil)
+    def favorite_groups(active_id = nil)
       @favorite_groups ||= begin
         groups = []
 
         if active_id.present?
           active_group = FavoriteGroup.where(:id => active_id.to_i).first
-          groups << active_group if active_group && active_group.contains?(self.id)
+          groups << active_group if active_group&.contains?(self.id)
         end
 
         groups += CurrentUser.user.favorite_groups.select do |favgroup|
@@ -1014,7 +988,9 @@ class Post < ApplicationRecord
     end
 
     def remove_from_fav_groups
-      FavoriteGroup.delay.purge_post(id)
+      FavoriteGroup.for_post(id).find_each do |favgroup|
+        favgroup.remove!(id)
+      end
     end
   end
 
@@ -1027,21 +1003,17 @@ class Post < ApplicationRecord
     end
 
     def uploader_name
-      User.id_to_name(uploader_id)
+      uploader.name
     end
   end
 
   module PoolMethods
     def pools
-      @pools ||= begin
-        return Pool.none if pool_string.blank?
-        pool_ids = pool_string.scan(/\d+/)
-        Pool.where(id: pool_ids).series_first
-      end
+      Pool.where("pools.post_ids && array[?]", id).series_first
     end
 
     def has_active_pools?
-      pools.undeleted.length > 0
+      !pools.undeleted.empty?
     end
 
     def belongs_to_pool?(pool)
@@ -1058,7 +1030,6 @@ class Post < ApplicationRecord
 
       with_lock do
         self.pool_string = "#{pool_string} pool:#{pool.id}".strip
-        set_pool_category_pseudo_tags
         update_column(:pool_string, pool_string) unless new_record?
         pool.add!(self)
       end
@@ -1070,7 +1041,6 @@ class Post < ApplicationRecord
 
       with_lock do
         self.pool_string = pool_string.gsub(/(?:\A| )pool:#{pool.id}(?:\Z| )/, " ").strip
-        set_pool_category_pseudo_tags
         update_column(:pool_string, pool_string) unless new_record?
         pool.remove!(self)
       end
@@ -1079,18 +1049,6 @@ class Post < ApplicationRecord
     def remove_from_all_pools
       pools.find_each do |pool|
         pool.remove!(self)
-      end
-    end
-
-    def set_pool_category_pseudo_tags
-      self.pool_string = (pool_string.split - ["pool:series", "pool:collection"]).join(" ")
-
-      pool_categories = pools.undeleted.pluck(:category)
-      if pool_categories.include?("series")
-        self.pool_string = "#{pool_string} pool:series".strip
-      end
-      if pool_categories.include?("collection")
-        self.pool_string = "#{pool_string} pool:collection".strip
       end
     end
   end
@@ -1130,20 +1088,20 @@ class Post < ApplicationRecord
       tags += " -status:deleted" if CurrentUser.hide_deleted_posts? && !Tag.has_metatag?(tags, "status", "-status")
       tags = Tag.normalize_query(tags)
 
-      # optimize some cases. these are just estimates but at these
+      # Optimize some cases. these are just estimates but at these
       # quantities being off by a few hundred doesn't matter much
       if Danbooru.config.estimate_post_counts
         if tags == ""
-          return (Post.maximum(:id) * (2200402.0 / 2232212)).floor
+          return (Post.maximum(:id).to_i * (2200402.0 / 2232212)).floor
 
         elsif tags =~ /^rating:s(?:afe)?$/
-          return (Post.maximum(:id) * (1648652.0 / 2200402)).floor
+          return (Post.maximum(:id).to_i * (1648652.0 / 2200402)).floor
 
         elsif tags =~ /^rating:q(?:uestionable)?$/
-          return (Post.maximum(:id) * (350101.0 / 2200402)).floor
+          return (Post.maximum(:id).to_i * (350101.0 / 2200402)).floor
 
         elsif tags =~ /^rating:e(?:xplicit)?$/
-          return (Post.maximum(:id) * (201650.0 / 2200402)).floor
+          return (Post.maximum(:id).to_i * (201650.0 / 2200402)).floor
 
         end
       end
@@ -1164,8 +1122,8 @@ class Post < ApplicationRecord
     end
 
     def fast_count_search(tags, timeout:, raise_on_timeout:)
-      count = PostReadOnly.with_timeout(timeout, nil, tags: tags) do
-        PostReadOnly.tag_match(tags).count
+      count = Post.with_timeout(timeout, nil, tags: tags) do
+        Post.tag_match(tags).count
       end
 
       if count.nil?
@@ -1187,14 +1145,14 @@ class Post < ApplicationRecord
     def fix_post_counts(post)
       post.set_tag_counts(false)
       if post.changes_saved?
-        args = Hash[TagCategory.categories.map {|x| ["tag_count_#{x}",post.send("tag_count_#{x}")]}].update(:tag_count => post.tag_count)
+        args = Hash[TagCategory.categories.map {|x| ["tag_count_#{x}", post.send("tag_count_#{x}")]}].update(:tag_count => post.tag_count)
         post.update_columns(args)
       end
     end
 
     def get_count_from_cache(tags)
       if Tag.is_simple_tag?(tags)
-        count = select_value_sql("SELECT post_count FROM tags WHERE name = ?", tags.to_s)
+        count = Tag.find_by(name: tags).try(:post_count)
       else
         # this will only have a value for multi-tag searches or single metatag searches
         count = Cache.get(count_cache_key(tags))
@@ -1246,7 +1204,7 @@ class Post < ApplicationRecord
     end
 
     def update_parent_on_destroy
-      parent.update_has_children_flag if parent
+      parent&.update_has_children_flag
     end
 
     def update_children_on_destroy
@@ -1278,7 +1236,7 @@ class Post < ApplicationRecord
       end
 
       unless options[:without_mod_action]
-        ModAction.log("moved favorites from post ##{id} to post ##{parent.id}",:post_move_favorites)
+        ModAction.log("moved favorites from post ##{id} to post ##{parent.id}", :post_move_favorites)
       end
     end
 
@@ -1299,7 +1257,7 @@ class Post < ApplicationRecord
 
     def children_ids
       if has_children?
-        children.map{|p| p.id}.join(' ')
+        children.map {|p| p.id}.join(' ')
       end
     end
   end
@@ -1313,7 +1271,7 @@ class Post < ApplicationRecord
 
       transaction do
         Post.without_timeout do
-          ModAction.log("permanently deleted post ##{id}",:post_permanent_delete)
+          ModAction.log("permanently deleted post ##{id}", :post_permanent_delete)
 
           give_favorites_to_parent
           update_children_on_destroy
@@ -1329,12 +1287,12 @@ class Post < ApplicationRecord
 
     def ban!
       update_column(:is_banned, true)
-      ModAction.log("banned post ##{id}",:post_ban)
+      ModAction.log("banned post ##{id}", :post_ban)
     end
 
     def unban!
       update_column(:is_banned, false)
-      ModAction.log("unbanned post ##{id}",:post_unban)
+      ModAction.log("unbanned post ##{id}", :post_unban)
     end
 
     def delete!(reason, options = {})
@@ -1357,7 +1315,7 @@ class Post < ApplicationRecord
         give_favorites_to_parent(options) if options[:move_favorites]
 
         unless options[:without_mod_action]
-          ModAction.log("deleted post ##{id}, reason: #{reason}",:post_delete)
+          ModAction.log("deleted post ##{id}, reason: #{reason}", :post_delete)
         end
       end
     end
@@ -1368,7 +1326,7 @@ class Post < ApplicationRecord
         return false
       end
 
-      if !CurrentUser.is_admin? 
+      if !CurrentUser.is_admin?
         if approved_by?(CurrentUser.user)
           raise ApprovalError.new("You have previously approved this post and cannot undelete it")
         elsif uploader_id == CurrentUser.id
@@ -1380,7 +1338,7 @@ class Post < ApplicationRecord
       self.approver_id = CurrentUser.id
       flags.each {|x| x.resolve!}
       save
-      ModAction.log("undeleted post ##{id}",:post_undelete)
+      ModAction.log("undeleted post ##{id}", :post_undelete)
     end
 
     def replace!(params)
@@ -1429,12 +1387,6 @@ class Post < ApplicationRecord
       revert_to(target)
       save!
     end
-
-    def notify_pubsub
-      return unless Danbooru.config.google_api_project
-
-      # PostUpdate.insert(id)
-    end
   end
 
   module NoteMethods
@@ -1480,27 +1432,17 @@ class Post < ApplicationRecord
   end
 
   module ApiMethods
-    def hidden_attributes
-      list = super + [:tag_index]
-      unless CurrentUser.is_moderator?
-        list += [:fav_string]
-      end
-      if !visible?
-        list += [:md5, :file_ext]
-      end
-      super + list
-    end
-
-    def method_attributes
-      list = super + [:uploader_name, :has_large, :has_visible_children, :children_ids, :is_favorited?] + TagCategory.categories.map {|x| "tag_string_#{x}".to_sym}
-      if visible?
-        list += [:file_url, :large_file_url, :preview_file_url]
-      end
-      list
+    def api_attributes
+      attributes = super
+      attributes += [:uploader_name, :has_large, :has_visible_children, :children_ids, :is_favorited?] + TagCategory.categories.map {|x| "tag_string_#{x}".to_sym}
+      attributes += [:file_url, :large_file_url, :preview_file_url] if visible?
+      attributes -= [:md5, :file_ext] if !visible?
+      attributes -= [:fav_string] if !CurrentUser.is_moderator?
+      attributes
     end
 
     def associated_attributes
-      [ :pixiv_ugoira_frame_data ]
+      [:pixiv_ugoira_frame_data]
     end
 
     def as_json(options = {})
@@ -1519,7 +1461,7 @@ class Post < ApplicationRecord
         "created_at" => created_at.to_formatted_s(:db),
         "has_notes" => has_notes?,
         "rating" => rating,
-        "author" => uploader_name,
+        "author" => uploader.name,
         "creator_id" => uploader_id,
         "width" => image_width,
         "source" => source,
@@ -1696,24 +1638,11 @@ class Post < ApplicationRecord
       where("posts.tag_index @@ to_tsquery('danbooru', E?)", tag.to_escaped_for_tsquery)
     end
 
-    def tag_match(query, read_only = false)
-      if query =~ /status:deleted.status:deleted/
-        # temp fix for degenerate crawlers
-        raise ActiveRecord::RecordNotFound
-      end
-
-      if read_only
-        begin
-          PostQueryBuilder.new(query, read_only: true).build
-        rescue PG::ConnectionBad
-          PostQueryBuilder.new(query).build
-        end
-      else
-        PostQueryBuilder.new(query).build
-      end
+    def tag_match(query)
+      PostQueryBuilder.new(query).build
     end
   end
-  
+
   module PixivMethods
     def parse_pixiv_id
       self.pixiv_id = nil
@@ -1772,22 +1701,6 @@ class Post < ApplicationRecord
       end
     end
 
-    def tag_names_are_valid
-      # only validate new tags; allow invalid names for tags that already exist.
-      added_tags = tag_array - tag_array_was
-      new_tags = added_tags - Tag.where(name: added_tags).pluck(:name)
-
-      new_tags.each do |name|
-        tag = Tag.new
-        tag.name = name
-        tag.valid?
-
-        tag.errors.messages.each do |attribute, messages|
-          errors[:tag_string] << "tag #{attribute} #{messages.join(';')}"
-        end
-      end
-    end
-
     def added_tags_are_valid
       new_tags = added_tags.select { |t| t.post_count <= 0 }
       new_general_tags = new_tags.select { |t| t.category == Tag.categories.general }
@@ -1797,18 +1710,18 @@ class Post < ApplicationRecord
       if new_general_tags.present?
         n = new_general_tags.size
         tag_wiki_links = new_general_tags.map { |tag| "[[#{tag.name}]]" }
-        self.warnings[:base] << "Created #{n} new #{n == 1 ? "tag" : "tags"}: #{tag_wiki_links.join(", ")}"
+        self.warnings[:base] << "Created #{n} new #{(n == 1) ? "tag" : "tags"}: #{tag_wiki_links.join(", ")}"
       end
 
       if repopulated_tags.present?
         n = repopulated_tags.size
         tag_wiki_links = repopulated_tags.map { |tag| "[[#{tag.name}]]" }
-        self.warnings[:base] << "Repopulated #{n} old #{n == 1 ? "tag" : "tags"}: #{tag_wiki_links.join(", ")}"
+        self.warnings[:base] << "Repopulated #{n} old #{(n == 1) ? "tag" : "tags"}: #{tag_wiki_links.join(", ")}"
       end
 
       new_artist_tags.each do |tag|
         if tag.artist.blank?
-          self.warnings[:base] << "Artist [[#{tag.name}]] requires an artist entry. \"Create new artist entry\":[/artists/new?artist%5Bname%5D=#{CGI::escape(tag.name)}]"
+          self.warnings[:base] << "Artist [[#{tag.name}]] requires an artist entry. \"Create new artist entry\":[/artists/new?artist%5Bname%5D=#{CGI.escape(tag.name)}]"
         end
       end
     end
@@ -1830,7 +1743,7 @@ class Post < ApplicationRecord
       return if tags.any? { |t| t.category == Tag.categories.artist }
       return if Sources::Strategies.find(source).is_a?(Sources::Strategies::Null)
 
-      self.warnings[:base] << "Artist tag is required. \"Create new artist tag\":[/artists/new?artist%5Bsource%5D=#{CGI::escape(source)}]. Ask on the forum if you need naming help"
+      self.warnings[:base] << "Artist tag is required. \"Create new artist tag\":[/artists/new?artist%5Bsource%5D=#{CGI.escape(source)}]. Ask on the forum if you need naming help"
     end
 
     def has_copyright_tag
@@ -1848,7 +1761,7 @@ class Post < ApplicationRecord
       end
     end
   end
-  
+
   include FileMethods
   include ImageMethods
   include ApprovalMethods
@@ -1925,17 +1838,5 @@ class Post < ApplicationRecord
     end
 
     save
-  end
-
-  def update_column(name, value)
-    ret = super(name, value)
-    notify_pubsub
-    ret
-  end
-
-  def update_columns(attributes)
-    ret = super(attributes)
-    notify_pubsub
-    ret
   end
 end

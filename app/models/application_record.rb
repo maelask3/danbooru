@@ -1,7 +1,18 @@
 class ApplicationRecord < ActiveRecord::Base
   self.abstract_class = true
 
-  include Danbooru::Paginator::ActiveRecordExtension
+  concerning :PaginationMethods do
+    class_methods do
+      def paginate(*options)
+        extending(PaginationExtension).paginate(*options)
+      end
+
+      def paginated_search(params, count_pages: params[:search].present?)
+        search_params = params.fetch(:search, {}).permit!
+        search(search_params).paginate(params[:page], limit: params[:limit], search_count: count_pages)
+      end
+    end
+  end
 
   concerning :SearchMethods do
     class_methods do
@@ -18,11 +29,15 @@ class ApplicationRecord < ActiveRecord::Base
       end
 
       def where_ilike(attr, value)
-        where("lower(#{qualified_column_for(attr)}) LIKE ? ESCAPE E'\\\\'", value.mb_chars.downcase.to_escaped_for_sql_like)
+        where("#{qualified_column_for(attr)} ILIKE ? ESCAPE E'\\\\'", value.mb_chars.to_escaped_for_sql_like)
       end
 
       def where_not_ilike(attr, value)
-        where.not("lower(#{qualified_column_for(attr)}) LIKE ? ESCAPE E'\\\\'", value.mb_chars.downcase.to_escaped_for_sql_like)
+        where.not("#{qualified_column_for(attr)} ILIKE ? ESCAPE E'\\\\'", value.mb_chars.to_escaped_for_sql_like)
+      end
+
+      def where_iequals(attr, value)
+        where_ilike(attr, value.gsub(/\\/, '\\\\').gsub(/\*/, '\*'))
       end
 
       # https://www.postgresql.org/docs/current/static/functions-matching.html#FUNCTIONS-POSIX-REGEXP
@@ -35,36 +50,57 @@ class ApplicationRecord < ActiveRecord::Base
         where.not("#{qualified_column_for(attr)} ~ ?", "(?e)" + value)
       end
 
-      def attribute_matches(attribute, value, **options)
-        return all if value.nil?
-
-        column = column_for_attribute(attribute)
-        case column.sql_type_metadata.type
-        when :boolean
-          boolean_attribute_matches(attribute, value, **options)
-        when :integer, :datetime
-          numeric_attribute_matches(attribute, value, **options)
-        when :string, :text
-          text_attribute_matches(attribute, value, **options)
+      def where_inet_matches(attr, value)
+        if value.match?(/[, ]/)
+          ips = value.split(/[, ]+/).map { |ip| IPAddress.parse(ip).to_string }
+          where("#{qualified_column_for(attr)} = ANY(ARRAY[?]::inet[])", ips)
         else
-          raise ArgumentError, "unhandled attribute type"
+          ip = IPAddress.parse(value)
+          where("#{qualified_column_for(attr)} <<= ?", ip.to_string)
         end
       end
 
-      def boolean_attribute_matches(attribute, value)
-        if value.to_s.truthy?
-          value = true
-        elsif value.to_s.falsy?
-          value = false
+      def where_array_includes_any(attr, values)
+        where("#{qualified_column_for(attr)} && ARRAY[?]", values)
+      end
+
+      def where_array_includes_all(attr, values)
+        where("#{qualified_column_for(attr)} @> ARRAY[?]", values)
+      end
+
+      def where_array_count(attr, value)
+        relation = all
+        qualified_column = "cardinality(#{qualified_column_for(attr)})"
+        parsed_range = Tag.parse_helper(value, :integer)
+
+        PostQueryBuilder.new(nil).add_range_relation(parsed_range, qualified_column, relation)
+      end
+
+      def search_boolean_attribute(attribute, params)
+        return all unless params[attribute]
+
+        value = params[attribute].to_s
+        if value.truthy?
+          where(attribute => true)
+        elsif value.falsy?
+          where(attribute => false)
         else
           raise ArgumentError, "value must be truthy or falsy"
         end
+      end
 
-        where(attribute => value)
+      def search_inet_attribute(attr, params)
+        if params[attr].present?
+          where_inet_matches(attr, params[attr])
+        else
+          all
+        end
       end
 
       # range: "5", ">5", "<5", ">=5", "<=5", "5..10", "5,6,7"
       def numeric_attribute_matches(attribute, range)
+        return all unless range.present?
+
         column = column_for_attribute(attribute)
         qualified_column = "#{table_name}.#{column.name}"
         parsed_range = Tag.parse_helper(range, column.type)
@@ -73,6 +109,8 @@ class ApplicationRecord < ActiveRecord::Base
       end
 
       def text_attribute_matches(attribute, value, index_column: nil, ts_config: "english")
+        return all unless value.present?
+
         column = column_for_attribute(attribute)
         qualified_column = "#{table_name}.#{column.name}"
 
@@ -82,6 +120,38 @@ class ApplicationRecord < ActiveRecord::Base
           where("#{table_name}.#{index_column} @@ plainto_tsquery(:ts_config, :value)", ts_config: ts_config, value: value)
         else
           where("to_tsvector(:ts_config, #{qualified_column}) @@ plainto_tsquery(:ts_config, :value)", ts_config: ts_config, value: value)
+        end
+      end
+
+      def search_attributes(params, *attributes)
+        attributes.reduce(all) do |relation, attribute|
+          relation.search_attribute(attribute, params)
+        end
+      end
+
+      def search_attribute(name, params)
+        column = column_for_attribute(name)
+        type = column.type || reflect_on_association(name)&.class_name
+
+        if column.try(:array?)
+          return search_array_attribute(name, type, params)
+        end
+
+        case type
+        when "User"
+          search_user_attribute(name, params)
+        when "Post"
+          search_post_id_attribute(params)
+        when :string, :text
+          search_text_attribute(name, params)
+        when :boolean
+          search_boolean_attribute(name, params)
+        when :integer, :datetime
+          numeric_attribute_matches(name, params[name])
+        when :inet
+          search_inet_attribute(name, params)
+        else
+          raise NotImplementedError, "unhandled attribute type"
         end
       end
 
@@ -109,6 +179,54 @@ class ApplicationRecord < ActiveRecord::Base
         end
       end
 
+      def search_user_attribute(attr, params)
+        if params["#{attr}_id"]
+          search_attribute("#{attr}_id", params)
+        elsif params["#{attr}_name"]
+          where(attr => User.search(name_matches: params["#{attr}_name"]).reorder(nil))
+        elsif params[attr]
+          where(attr => User.search(params[attr]).reorder(nil))
+        else
+          all
+        end
+      end
+
+      def search_post_id_attribute(params)
+        relation = all
+
+        if params[:post_id].present?
+          relation = relation.search_attribute(:post_id, params)
+        end
+
+        if params[:post_tags_match].present?
+          relation = relation.where(post_id: Post.tag_match(params[:post_tags_match]).reorder(nil))
+        end
+
+        relation
+      end
+
+      def search_array_attribute(name, type, params)
+        relation = all
+
+        if params[:"#{name}_include_any"]
+          items = params[:"#{name}_include_any"].to_s.scan(/[^[:space:]]+/)
+          items = items.map(&:to_i) if type == :integer
+
+          relation = relation.where_array_includes_any(name, items)
+        elsif params[:"#{name}_include_all"]
+          items = params[:"#{name}_include_all"].to_s.scan(/[^[:space:]]+/)
+          items = items.map(&:to_i) if type == :integer
+
+          relation = relation.where_array_includes_all(name, items)
+        end
+
+        if params[:"#{name.to_s.singularize}_count"]
+          relation = relation.where_array_count(name, params[:"#{name.to_s.singularize}_count"])
+        end
+
+        relation
+      end
+
       def apply_default_order(params)
         if params[:order] == "custom"
           parse_ids = Tag.parse_helper(params[:id])
@@ -134,12 +252,8 @@ class ApplicationRecord < ActiveRecord::Base
       def search(params = {})
         params ||= {}
 
-        q = all
-        q = q.attribute_matches(:id, params[:id])
-        q = q.attribute_matches(:created_at, params[:created_at]) if attribute_names.include?("created_at")
-        q = q.attribute_matches(:updated_at, params[:updated_at]) if attribute_names.include?("updated_at")
-
-        q
+        default_attributes = (attribute_names.map(&:to_sym) & %i[id created_at updated_at])
+        search_attributes(params, *default_attributes)
       end
     end
   end
@@ -147,42 +261,47 @@ class ApplicationRecord < ActiveRecord::Base
   module ApiMethods
     extend ActiveSupport::Concern
 
-    def as_json(options = {})
-      options ||= {}
-      options[:except] ||= []
-      options[:except] += hidden_attributes
+    class_methods do
+      def api_attributes(*attributes, including: [])
+        return @api_attributes if @api_attributes
 
-      options[:methods] ||= []
-      options[:methods] += method_attributes
+        if attributes.present?
+          @api_attributes = attributes
+        else
+          @api_attributes = attribute_types.reject { |name, attr| attr.type.in?([:inet, :tsvector]) }.keys.map(&:to_sym)
+        end
 
-      super(options)
+        @api_attributes += including
+        @api_attributes
+      end
     end
 
-    def to_xml(options = {}, &block)
-      options ||= {}
-
-      options[:except] ||= []
-      options[:except] += hidden_attributes
-
-      options[:methods] ||= []
-      options[:methods] += method_attributes
-
-      super(options, &block)
+    def api_attributes
+      self.class.api_attributes
     end
 
-    def serializable_hash(*args)
-      hash = super(*args)
+    def serializable_hash(options = {})
+      options ||= {}
+      options[:only] ||= []
+      options[:include] ||= []
+      options[:methods] ||= []
+
+      attributes, methods = api_attributes.partition { |attr| has_attribute?(attr) }
+      methods += options[:methods]
+      includes = options[:include]
+
+      if options[:only].present?
+        attributes &= options[:only]
+        methods &= options[:only]
+        includes &= options[:only]
+      end
+
+      options[:only] = attributes
+      options[:methods] = methods
+      options[:include] = includes
+
+      hash = super(options)
       hash.transform_keys { |key| key.delete("?") }
-    end
-
-    protected
-
-    def hidden_attributes
-      [:uploader_ip_addr, :updater_ip_addr, :creator_ip_addr]
-    end
-
-    def method_attributes
-      []
     end
   end
 
@@ -199,9 +318,7 @@ class ApplicationRecord < ActiveRecord::Base
         connection.execute("SET STATEMENT_TIMEOUT = #{n}") unless Rails.env == "test"
         yield
       rescue ::ActiveRecord::StatementInvalid => x
-        if Rails.env.production?
-          NewRelic::Agent.notice_error(x, :custom_params => new_relic_params.merge(:user_id => CurrentUser.id, :user_ip_addr => CurrentUser.ip_addr))
-        end
+        DanbooruLogger.log(x, expected: false, **new_relic_params)
         return default_value
       ensure
         connection.execute("SET STATEMENT_TIMEOUT = #{CurrentUser.user.try(:statement_timeout) || 3_000}") unless Rails.env == "test"
@@ -239,15 +356,11 @@ class ApplicationRecord < ActiveRecord::Base
       def belongs_to_creator(options = {})
         class_eval do
           belongs_to :creator, options.merge(class_name: "User")
-          before_validation(on: :create) do |rec| 
+          before_validation(on: :create) do |rec|
             if rec.creator_id.nil?
               rec.creator_id = CurrentUser.id
               rec.creator_ip_addr = CurrentUser.ip_addr if rec.respond_to?(:creator_ip_addr=)
             end
-          end
-
-          define_method :creator_name do
-            User.id_to_name(creator_id)
           end
         end
       end
@@ -258,10 +371,6 @@ class ApplicationRecord < ActiveRecord::Base
           before_validation do |rec|
             rec.updater_id = CurrentUser.id
             rec.updater_ip_addr = CurrentUser.ip_addr if rec.respond_to?(:updater_ip_addr=)
-          end
-
-          define_method :updater_name do
-            User.id_to_name(updater_id)
           end
         end
       end

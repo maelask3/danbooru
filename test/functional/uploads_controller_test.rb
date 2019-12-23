@@ -32,12 +32,12 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
       end
     end
 
-    context "preprocess action" do      
+    context "preprocess action" do
       should "prefer the file over the source when preprocessing" do
         file = Rack::Test::UploadedFile.new("#{Rails.root}/test/files/test.jpg", "image/jpeg")
         post_auth preprocess_uploads_path, @user, params: {:upload => {:source => "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg", :file => file}}
         assert_response :success
-        Delayed::Worker.new.work_off
+        perform_enqueued_jobs
         assert_equal("ecef68c44edb8a0d6a3070b5f8e8ee76", Upload.last.md5)
       end
     end
@@ -52,13 +52,14 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
         should "preprocess" do
           assert_difference(-> { Upload.count }) do
             get_auth new_upload_path, @user, params: {:url => "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg"}
+            perform_enqueued_jobs
             assert_response :success
           end
         end
 
         should "prefer the file" do
           get_auth new_upload_path, @user, params: {url: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg"}
-          Delayed::Worker.new.work_off
+          perform_enqueued_jobs
           file = Rack::Test::UploadedFile.new("#{Rails.root}/test/files/test.jpg", "image/jpeg")
           assert_difference(-> { Post.count }) do
             post_auth uploads_path, @user, params: {upload: {file: file, tag_string: "aaa", rating: "q", source: "https://raikou1.donmai.us/d3/4e/d34e4cf0a437a5d65f8e82b7bcd02606.jpg"}}
@@ -77,14 +78,14 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
         should "trigger the preprocessor" do
           assert_difference(-> { Upload.preprocessed.count }, 1) do
             get_auth new_upload_path, @user, params: {:url => @source, :ref => @ref}
-            Delayed::Worker.new.work_off
+            perform_enqueued_jobs
           end
         end
       end
 
       context "for a twitter post" do
         setup do
-          @source = "https://twitter.com/frappuccino/status/566030116182949888"
+          @source = "https://twitter.com/onsen_musume_jp/status/865534101918330881"
         end
 
         should "render" do
@@ -97,7 +98,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
           skip "Twitter keys are not set" unless Danbooru.config.twitter_api_key
           get_auth new_upload_path, @user, params: {:url => @source}
           assert_response :success
-          Delayed::Worker.new.work_off
+          perform_enqueued_jobs
           upload = Upload.last
           assert_equal(@source, upload.source)
         end
@@ -112,7 +113,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
         should "trigger the preprocessor" do
           assert_difference(-> { Upload.preprocessed.count }, 1) do
             get_auth new_upload_path, @user, params: {:url => @source, :ref => @ref}
-            Delayed::Worker.new.work_off
+            perform_enqueued_jobs
           end
         end
       end
@@ -137,6 +138,7 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
       setup do
         as_user do
           @upload = create(:source_upload, tag_string: "foo bar")
+          @upload2 = create(:source_upload, tag_string: "tagme", rating: "e")
         end
       end
 
@@ -148,17 +150,19 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
       context "with search parameters" do
         should "render" do
           search_params = {
-            uploader_name: @upload.uploader_name,
+            uploader_name: @upload.uploader.name,
             source_matches: @upload.source,
             rating: @upload.rating,
-            has_post: "yes",
-            post_tags_match: @upload.tag_string,
             status: @upload.status,
-            server: @upload.server,
+            server: @upload.server
           }
 
           get uploads_path, params: { search: search_params }
           assert_response :success
+
+          get uploads_path(format: :json), params: { search: search_params }
+          assert_response :success
+          assert_equal(@upload.id, response.parsed_body.first["id"])
         end
       end
     end
@@ -188,13 +192,13 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
           end
 
           should "update the predecessor" do
-            assert_difference(->{ Post.count }, 1) do
-              assert_difference(->{ Upload.count }, 0) do
+            assert_difference(-> { Post.count }, 1) do
+              assert_difference(-> { Upload.count }, 0) do
                 post_auth uploads_path, @user, params: {:upload => {:tag_string => "aaa", :rating => "q", :source => @source, :referer_url => @ref}}
               end
             end
             post = Post.last
-            assert_match(/aaa/, post.tag_string)            
+            assert_match(/aaa/, post.tag_string)
           end
         end
 
@@ -208,13 +212,13 @@ class UploadsControllerTest < ActionDispatch::IntegrationTest
           end
 
           should "update the predecessor" do
-            assert_difference(->{ Post.count }, 1) do
-              assert_difference(->{ Upload.count }, 0) do
+            assert_difference(-> { Post.count }, 1) do
+              assert_difference(-> { Upload.count }, 0) do
                 post_auth uploads_path, @user, params: {:upload => {:tag_string => "aaa", :rating => "q", :source => @source, :referer_url => @ref}}
               end
             end
             post = Post.last
-            assert_match(/aaa/, post.tag_string)            
+            assert_match(/aaa/, post.tag_string)
           end
         end
       end

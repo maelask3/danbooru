@@ -1,6 +1,6 @@
 class UploadService
   module Utils
-    extend self
+    module_function
     class CorruptFileError < RuntimeError; end
 
     def file_header_to_file_ext(file)
@@ -22,31 +22,6 @@ class UploadService
       else
         "bin"
       end
-    end
-
-    def delete_file(md5, file_ext, upload_id = nil)     
-      if Post.where(md5: md5).exists?
-        if upload_id.present? && Upload.where(id: upload_id).exists?
-          CurrentUser.as_system do
-            Upload.find(upload_id).update(status: "completed")
-          end
-        end
-
-        return
-      end
-
-      if upload_id.present? && Upload.where(id: upload_id).exists?
-        CurrentUser.as_system do
-          Upload.find(upload_id).update(status: "preprocessed + deleted")
-        end
-      end
-
-      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :original)
-      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :large)
-      Danbooru.config.storage_manager.delete_file(nil, md5, file_ext, :preview)
-      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :original)
-      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :large)
-      Danbooru.config.backup_storage_manager.delete_file(nil, md5, file_ext, :preview)
     end
 
     def calculate_ugoira_dimensions(source_path)
@@ -118,7 +93,7 @@ class UploadService
 
     def generate_video_crop_for(video, width)
       vp = Tempfile.new(["video-preview", ".jpg"], binmode: true)
-      video.screenshot(vp.path, {:seek_time => 0, :resolution => "#{video.width}x#{video.height}"})
+      video.screenshot(vp.path, :seek_time => 0, :resolution => "#{video.width}x#{video.height}")
       crop = DanbooruImageResizer.crop(vp, width, width, 85)
       vp.close
       return crop
@@ -133,7 +108,7 @@ class UploadService
       end
 
       output_file = Tempfile.new(["video-preview", ".jpg"], binmode: true)
-      video.screenshot(output_file.path, {:seek_time => 0, :resolution => "#{width}x#{height}"})
+      video.screenshot(output_file.path, :seek_time => 0, :resolution => "#{width}x#{height}")
       output_file
     end
 
@@ -163,14 +138,10 @@ class UploadService
         crop_file.try(:close!)
         sample_file.try(:close!)
       end
-
-      # in case this upload never finishes processing, we need to delete the
-      # distributed files in the future
-      UploadService::Utils.delay(priority: -1, queue: "default", run_at: 24.hours.from_now).delete_file(upload.md5, upload.file_ext, upload.id)
     end
 
-    # these methods are only really used during upload processing even 
-    # though logically they belong on upload. post can rely on the 
+    # these methods are only really used during upload processing even
+    # though logically they belong on upload. post can rely on the
     # automatic tag that's added.
     def is_animated_gif?(upload, file)
       return false if upload.file_ext != "gif"
@@ -208,7 +179,7 @@ class UploadService
 
     def get_file_for_upload(upload, file: nil)
       return file if file.present?
-      raise RuntimeError, "No file or source URL provided" if upload.source_url.blank?
+      raise "No file or source URL provided" if upload.source_url.blank?
 
       attempts = 0
 
@@ -219,8 +190,7 @@ class UploadService
         if !DanbooruImageResizer.validate_shell(file)
           raise CorruptFileError.new("File is corrupted")
         end
-
-      rescue
+      rescue StandardError
         if attempts == 3
           raise
         end
@@ -230,7 +200,7 @@ class UploadService
       end
 
       if download.data[:ugoira_frame_data].present?
-        upload.context = { 
+        upload.context = {
           "ugoira" => {
             "frame_data" => download.data[:ugoira_frame_data],
             "content_type" => "image/jpeg"

@@ -7,7 +7,7 @@ class LegacyController < ApplicationController
 
     respond_with(@posts) do |format|
       format.xml do
-        xml = Builder::XmlMarkup.new(indent: 2)
+        xml = ::Builder::XmlMarkup.new(indent: 2)
         xml.instruct!
         xml.posts do
           @posts.each { |attrs| xml.post(attrs) }
@@ -33,7 +33,8 @@ class LegacyController < ApplicationController
     render :plain => "this resource is no longer available", :status => 410
   end
 
-private
+  private
+
   def tag_query
     params[:tags] || (params[:post] && params[:post][:tags])
   end

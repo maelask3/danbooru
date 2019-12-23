@@ -1,5 +1,11 @@
 class PixivUgoiraConverter
+  def self.enabled?
+    system("ffmpeg -version > /dev/null") && system("mkvmerge --version > /dev/null")
+  end
+
   def self.generate_webm(ugoira_file, frame_data)
+    raise NotImplementedError, "can't convert ugoira to webm: ffmpeg or mkvmerge not installed" unless enabled?
+
     folder = Zip::File.new(ugoira_file.path)
     output_file = Tempfile.new(binmode: true)
     write_path = output_file.path
@@ -10,7 +16,7 @@ class PixivUgoiraConverter
         path = File.join(tmpdir, "images", file.name)
         file.extract(path)
       end
-      
+
       # Duplicate last frame to avoid it being displayed only for a very short amount of time.
       last_file_name = folder.to_a.last.name
       last_file_name =~ /\A(\d{6})(\.\w{,4})\Z/
@@ -20,7 +26,7 @@ class PixivUgoiraConverter
       path_from = File.join(tmpdir, "images", last_file_name)
       path_to = File.join(tmpdir, "images", new_last_filename)
       FileUtils.cp(path_from, path_to)
-      
+
       delay_sum = 0
       timecodes_path = File.join(tmpdir, "timecodes.tc")
       File.open(timecodes_path, "w+") do |f|
@@ -44,7 +50,6 @@ class PixivUgoiraConverter
           Rails.logger.error "[write_webm][ffmpeg] #{line}"
         end
         Rails.logger.error "[write_webm] ******************************"
-        return
       end
 
       mkvmerge_out, status = Open3.capture2e("mkvmerge -o #{write_path} --webm --timecodes 0:#{tmpdir}/timecodes.tc #{tmpdir}/tmp.webm")
@@ -57,7 +62,6 @@ class PixivUgoiraConverter
           Rails.logger.error "[write_webm][mkvmerge] #{line}"
         end
         Rails.logger.error "[write_webm] ******************************"
-        return
       end
     end
 
@@ -73,7 +77,7 @@ class PixivUgoiraConverter
 
     DanbooruImageResizer.crop(file, Danbooru.config.small_image_width, Danbooru.config.small_image_width, 85)
   ensure
-    file.close!
+    file&.close!
   end
 
   def self.generate_preview(ugoira_file)

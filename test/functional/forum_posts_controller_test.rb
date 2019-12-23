@@ -103,6 +103,20 @@ class ForumPostsControllerTest < ActionDispatch::IntegrationTest
       end
     end
 
+    context "show action" do
+      should "raise an error if the user doesn't have permission to view the topic" do
+        as(@user) { @forum_post.topic.update(min_level: User::Levels::ADMIN) }
+        get_auth forum_post_path(@forum_post), @user
+
+        assert_response 403
+      end
+
+      should "redirect to the forum topic" do
+        get forum_post_path(@forum_post)
+        assert_redirected_to forum_topic_path(@forum_post.topic, anchor: "forum_post_#{@forum_post.id}")
+      end
+    end
+
     context "edit action" do
       should "render if the editor is the creator of the topic" do
         get_auth edit_forum_post_path(@forum_post), @user

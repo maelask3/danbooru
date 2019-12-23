@@ -1,5 +1,5 @@
 class UserUpgradesController < ApplicationController
-  before_action :member_only, :only => [:new, :show]
+  before_action :member_only, only: [:show]
   helper_method :user
   skip_before_action :verify_authenticity_token, only: [:create]
 
@@ -51,9 +51,14 @@ class UserUpgradesController < ApplicationController
       @user.promote_to!(level, is_upgrade: true)
       flash[:success] = true
     rescue Stripe::CardError => e
+      DanbooruLogger.log(e)
       flash[:error] = e.message
     end
 
-    redirect_to user_upgrade_path(user_id: params[:user_id])
+    if @user == CurrentUser.user
+      redirect_to user_upgrade_path
+    else
+      redirect_to user_upgrade_path(user_id: params[:user_id])
+    end
   end
 end

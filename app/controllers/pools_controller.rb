@@ -17,29 +17,28 @@ class PoolsController < ApplicationController
   end
 
   def index
-    @pools = Pool.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@pools) do |format|
-      format.xml do
-        render :xml => @pools.to_xml(:root => "pools")
-      end
-      format.json do
-        render json: @pools.to_json
-        expires_in params[:expiry].to_i.days if params[:expiry]
-      end
+    @pools = Pool.includes(:creator).paginated_search(params, count_pages: true)
+
+    if params[:redirect].to_s.truthy? && @pools.one? && Pool.normalize_name_for_search(@pools.first.name) == Pool.normalize_name_for_search(params[:search][:name_matches])
+      redirect_to @pools.first
+    else
+      respond_with @pools
     end
   end
 
   def gallery
-    params[:limit] ||= CurrentUser.user.per_page
+    limit = params[:limit].presence || CurrentUser.user.per_page
     search = search_params.presence || ActionController::Parameters.new(category: "series")
 
-    @pools = Pool.search(search).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
+    @pools = Pool.search(search).paginate(params[:page], limit: limit, search_count: params[:search])
     @post_set = PostSets::PoolGallery.new(@pools)
   end
 
   def show
+    limit = params[:limit].presence || CurrentUser.user.per_page
+
     @pool = Pool.find(params[:id])
-    @post_set = PostSets::Pool.new(@pool, params[:page])
+    @posts = @pool.posts.paginate(params[:page], limit: limit, count: @pool.post_count)
     respond_with(@pool)
   end
 

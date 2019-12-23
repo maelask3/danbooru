@@ -1,23 +1,13 @@
 class SavedSearchesController < ApplicationController
-  before_action :check_availability
   respond_to :html, :xml, :json, :js
-  
+
   def index
-    @saved_searches = saved_searches.order("id")
-
-    if params[:label]
-      @saved_searches = saved_searches.labeled(params[:label])
-    end
-
-    respond_with(@saved_searches) do |format|
-      format.xml do
-        render :xml => @saved_searches.to_xml(:root => "saved-searches")
-      end
-    end
+    @saved_searches = saved_searches.paginated_search(params, count_pages: true)
+    respond_with(@saved_searches)
   end
 
   def labels
-    @labels = SavedSearch.search_labels(CurrentUser.id, params[:search])
+    @labels = SavedSearch.search_labels(CurrentUser.id, params[:search]).take(params[:limit].to_i || 10)
     respond_with(@labels)
   end
 
@@ -46,12 +36,6 @@ class SavedSearchesController < ApplicationController
 
   def saved_searches
     CurrentUser.user.saved_searches
-  end
-
-  def check_availability
-    if !SavedSearch.enabled?
-      raise NotImplementedError.new("Saved searches are not available.")
-    end
   end
 
   def saved_search_params

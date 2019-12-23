@@ -1,13 +1,10 @@
 class WikiPageVersionsController < ApplicationController
   respond_to :html, :xml, :json
+  layout "sidebar"
 
   def index
-    @wiki_page_versions = WikiPageVersion.search(search_params).paginate(params[:page], :limit => params[:limit], :search_count => params[:search])
-    respond_with(@wiki_page_versions) do |format|
-      format.xml do
-        render :xml => @wiki_page_versions.to_xml(:root => "wiki-page-versions")
-      end
-    end
+    @wiki_page_versions = WikiPageVersion.paginated_search(params)
+    respond_with(@wiki_page_versions)
   end
 
   def show

@@ -1,19 +1,20 @@
 class ModAction < ApplicationRecord
   belongs_to :creator, :class_name => "User"
   before_validation :initialize_creator, :on => :create
-  validates_presence_of :creator_id
 
-  #####DIVISIONS#####
-  #Groups:     0-999
-  #Individual: 1000-1999
-  #####Actions#####
-  #Create:   0
-  #Update:   1
-  #Delete:   2
-  #Undelete: 3
-  #Ban:      4
-  #Unban:    5
-  #Misc:     6-19
+  api_attributes including: [:category_id]
+
+  # ####DIVISIONS#####
+  # Groups:     0-999
+  # Individual: 1000-1999
+  # ####Actions#####
+  # Create:   0
+  # Update:   1
+  # Delete:   2
+  # Undelete: 3
+  # Ban:      4
+  # Unban:    5
+  # Misc:     6-19
   enum category: {
     user_delete: 2,
     user_ban: 4,
@@ -49,26 +50,24 @@ class ModAction < ApplicationRecord
     ip_ban_create: 160,
     ip_ban_delete: 162,
     mass_update: 1000,
-    bulk_revert: 1001,
+    bulk_revert: 1001, # XXX unused
     other: 2000
   }
+
+  def self.permitted(user)
+    if user.is_moderator?
+      all
+    else
+      where.not(category: [:ip_ban_create, :ip_ban_delete])
+    end
+  end
 
   def self.search(params)
     q = super
 
-    q = q.attribute_matches(:description, params[:description_matches])
-
-    if params[:creator_id].present?
-      q = q.where("creator_id = ?", params[:creator_id].to_i)
-    end
-
-    if params[:creator_name].present?
-      q = q.where("creator_id = (select _.id from users _ where lower(_.name) = ?)", params[:creator_name].mb_chars.downcase)
-    end
-
-    if params[:category].present?
-      q = q.attribute_matches(:category, params[:category])
-    end
+    q = q.permitted(CurrentUser.user)
+    q = q.search_attributes(params, :creator, :category, :description)
+    q = q.text_attribute_matches(:description, params[:description_matches])
 
     q.apply_default_order(params)
   end
@@ -77,12 +76,8 @@ class ModAction < ApplicationRecord
     self.class.categories[category]
   end
 
-  def method_attributes
-    super + [:category_id]
-  end
-
   def self.log(desc, cat = :other)
-    create(:description => desc,:category => categories[cat])
+    create(:description => desc, :category => categories[cat])
   end
 
   def initialize_creator

@@ -14,7 +14,6 @@ Disallow: /dmails
 Disallow: /favorite
 Disallow: /iqdb_queries
 Disallow: /ip_bans
-Disallow: /janitor_trials
 Disallow: /maintenance
 Disallow: /m/
 Disallow: /mod_actions
@@ -41,7 +40,6 @@ Disallow: /static
 Disallow: /tag_alias_corrections
 Disallow: /tag_alias_requests
 Disallow: /tag_aliases
-Disallow: /tag_corrections
 Disallow: /tag_implication_requests
 Disallow: /tag_implications
 Disallow: /tags

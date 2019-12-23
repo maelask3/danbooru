@@ -1,7 +1,5 @@
 // Source: https://github.com/FrogBot/sassy_bootstrap/blob/master/lib/_reset.sass
 
-@import "../base/000_vars.scss";
-
 // Reset.sass
 // Props to Eric Meyer (meyerweb.com) for his CSS reset file. We're using an
 // adapted version here	that cuts out some of the reset HTML elements we will
@@ -19,8 +17,8 @@ h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, cite, cod
   margin: 0;
   padding: 0;
   border: 0;
-/*  font-weight: normal;*/
-/*  font-style: normal;*/
+  /*  font-weight: normal;*/
+  /*  font-style: normal;*/
   font-size: 100%;
   line-height: 1.25em;
   font-family: inherit;
@@ -35,7 +33,7 @@ ol, ul {
   list-style: none;
 }
 
-q:before, q:after, blockquote:before, blockquote:after {
+q::before, q::after, blockquote::before, blockquote::after {
   content: "";
 }
 

@@ -1,19 +1,7 @@
-div#c-wiki-pages {
-  form span.hint {
-    display: block;
-  }
-
-  #a-new {
-    div.notice {
-      font-size: 0.8em;
-      padding: 1em;
-      margin: 1em 0;
-    }
-  }
-}
-
-.wiki-other-name {
-  background-color: #EEE;
+.artist-other-name, .wiki-other-name {
+  background-color: var(--wiki-page-other-name-background-color);
   padding: 3px;
+  margin-right: 0.25em;
+  line-height: 2.25em;
   border-radius: 3px;
 }

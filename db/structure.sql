@@ -5,22 +5,9 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
---
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
-
-
---
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -46,7 +33,8 @@ CREATE FUNCTION public.favorites_insert_trigger() RETURNS trigger
       begin
         if (NEW.user_id % 100 = 0) then
           insert into favorites_0 values (NEW.*);
-                elsif (NEW.user_id % 100 = 1) then
+    
+        elsif (NEW.user_id % 100 = 1) then
           insert into favorites_1 values (NEW.*);
 
         elsif (NEW.user_id % 100 = 2) then
@@ -350,19 +338,6 @@ CREATE FUNCTION public.favorites_insert_trigger() RETURNS trigger
 
 
 --
--- Name: sourcepattern(text); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.sourcepattern(src text) RETURNS text
-    LANGUAGE plpgsql IMMUTABLE STRICT
-    AS $_$
-               BEGIN
-                 RETURN regexp_replace(src, '^[^/]*(//)?[^/]*.pixiv.net/img.*(/[^/]*/[^/]*)$', E'pixiv\\2');
-               END;
-             $_$;
-
-
---
 -- Name: testprs_end(internal); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -423,140 +398,6 @@ ALTER TEXT SEARCH CONFIGURATION public.danbooru
 
 SET default_tablespace = '';
 
-SET default_with_oids = false;
-
---
--- Name: advertisement_hits; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.advertisement_hits (
-    id integer NOT NULL,
-    advertisement_id integer NOT NULL,
-    ip_addr inet NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
-);
-
-
---
--- Name: advertisement_hits_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.advertisement_hits_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: advertisement_hits_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.advertisement_hits_id_seq OWNED BY public.advertisement_hits.id;
-
-
---
--- Name: advertisements; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.advertisements (
-    id integer NOT NULL,
-    referral_url text NOT NULL,
-    ad_type character varying NOT NULL,
-    status character varying NOT NULL,
-    hit_count integer DEFAULT 0 NOT NULL,
-    width integer NOT NULL,
-    height integer NOT NULL,
-    file_name character varying NOT NULL,
-    is_work_safe boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
-);
-
-
---
--- Name: advertisements_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.advertisements_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: advertisements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.advertisements_id_seq OWNED BY public.advertisements.id;
-
-
---
--- Name: amazon_backups; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.amazon_backups (
-    id integer NOT NULL,
-    last_id integer,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
-);
-
-
---
--- Name: amazon_backups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.amazon_backups_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: amazon_backups_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.amazon_backups_id_seq OWNED BY public.amazon_backups.id;
-
-
---
--- Name: anti_voters; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.anti_voters (
-    id integer NOT NULL,
-    user_id integer,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL
-);
-
-
---
--- Name: anti_voters_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.anti_voters_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: anti_voters_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.anti_voters_id_seq OWNED BY public.anti_voters.id;
-
-
 --
 -- Name: api_keys; Type: TABLE; Schema: public; Owner: -
 --
@@ -565,8 +406,8 @@ CREATE TABLE public.api_keys (
     id integer NOT NULL,
     user_id integer NOT NULL,
     key character varying NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -612,8 +453,8 @@ CREATE TABLE public.artist_commentaries (
     original_description text DEFAULT ''::text NOT NULL,
     translated_title text DEFAULT ''::text NOT NULL,
     translated_description text DEFAULT ''::text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -649,8 +490,8 @@ CREATE TABLE public.artist_commentary_versions (
     original_description text,
     translated_title text,
     translated_description text,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -682,8 +523,8 @@ CREATE TABLE public.artist_urls (
     artist_id integer NOT NULL,
     url text NOT NULL,
     normalized_url text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -722,8 +563,8 @@ CREATE TABLE public.artist_versions (
     group_name character varying DEFAULT ''::character varying NOT NULL,
     urls text[] DEFAULT '{}'::text[] NOT NULL,
     is_banned boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -758,8 +599,8 @@ CREATE TABLE public.artists (
     is_banned boolean DEFAULT false NOT NULL,
     other_names text[] DEFAULT '{}'::text[] NOT NULL,
     group_name character varying DEFAULT ''::character varying NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -792,8 +633,8 @@ CREATE TABLE public.bans (
     reason text NOT NULL,
     banner_id integer NOT NULL,
     expires_at timestamp without time zone NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -826,8 +667,8 @@ CREATE TABLE public.bulk_update_requests (
     forum_topic_id integer,
     script text NOT NULL,
     status character varying DEFAULT 'pending'::character varying NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     approver_id integer,
     forum_post_id integer,
     title text
@@ -862,8 +703,8 @@ CREATE TABLE public.comment_votes (
     comment_id integer NOT NULL,
     user_id integer NOT NULL,
     score integer NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -898,8 +739,8 @@ CREATE TABLE public.comments (
     creator_ip_addr inet NOT NULL,
     body_index tsvector NOT NULL,
     score integer DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     updater_id integer,
     updater_ip_addr inet,
     do_not_bump_post boolean DEFAULT false NOT NULL,
@@ -941,8 +782,8 @@ CREATE TABLE public.delayed_jobs (
     locked_at timestamp without time zone,
     failed_at timestamp without time zone,
     locked_by character varying,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     queue character varying
 );
 
@@ -974,8 +815,8 @@ CREATE TABLE public.dmail_filters (
     id integer NOT NULL,
     user_id integer NOT NULL,
     words text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -1012,8 +853,8 @@ CREATE TABLE public.dmails (
     message_index tsvector NOT NULL,
     is_read boolean DEFAULT false NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     creator_ip_addr inet NOT NULL,
     is_spam boolean DEFAULT false
 );
@@ -1039,6 +880,40 @@ ALTER SEQUENCE public.dmails_id_seq OWNED BY public.dmails.id;
 
 
 --
+-- Name: dtext_links; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dtext_links (
+    id bigint NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    model_type character varying NOT NULL,
+    model_id bigint NOT NULL,
+    link_type integer NOT NULL,
+    link_target character varying NOT NULL
+);
+
+
+--
+-- Name: dtext_links_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.dtext_links_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dtext_links_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.dtext_links_id_seq OWNED BY public.dtext_links.id;
+
+
+--
 -- Name: favorite_groups; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1048,8 +923,8 @@ CREATE TABLE public.favorite_groups (
     creator_id integer NOT NULL,
     post_ids text DEFAULT ''::text NOT NULL,
     post_count integer DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     is_public boolean DEFAULT false NOT NULL
 );
 
@@ -2148,8 +2023,8 @@ CREATE TABLE public.forum_posts (
     body text NOT NULL,
     text_index tsvector NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2213,8 +2088,8 @@ CREATE TABLE public.forum_topic_visits (
     user_id integer,
     forum_topic_id integer,
     last_read_at timestamp without time zone,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2251,8 +2126,8 @@ CREATE TABLE public.forum_topics (
     is_locked boolean DEFAULT false NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL,
     text_index tsvector NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     category_id integer DEFAULT 0 NOT NULL,
     min_level integer DEFAULT 0 NOT NULL
 );
@@ -2278,6 +2153,197 @@ ALTER SEQUENCE public.forum_topics_id_seq OWNED BY public.forum_topics.id;
 
 
 --
+-- Name: note_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.note_versions (
+    id integer NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    width integer NOT NULL,
+    height integer NOT NULL,
+    body text NOT NULL,
+    updater_ip_addr inet NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    note_id integer NOT NULL,
+    post_id integer NOT NULL,
+    updater_id integer NOT NULL,
+    version integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: posts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.posts (
+    id integer NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    uploader_id integer NOT NULL,
+    score integer DEFAULT 0 NOT NULL,
+    source character varying DEFAULT ''::character varying NOT NULL,
+    md5 character varying NOT NULL,
+    last_comment_bumped_at timestamp without time zone,
+    rating character(1) DEFAULT 'q'::bpchar NOT NULL,
+    image_width integer,
+    image_height integer,
+    uploader_ip_addr inet NOT NULL,
+    tag_string text DEFAULT ''::text NOT NULL,
+    is_note_locked boolean DEFAULT false NOT NULL,
+    fav_count integer DEFAULT 0 NOT NULL,
+    file_ext character varying NOT NULL,
+    last_noted_at timestamp without time zone,
+    is_rating_locked boolean DEFAULT false NOT NULL,
+    parent_id integer,
+    has_children boolean DEFAULT false NOT NULL,
+    approver_id integer,
+    tag_index tsvector,
+    tag_count_general integer DEFAULT 0 NOT NULL,
+    tag_count_artist integer DEFAULT 0 NOT NULL,
+    tag_count_character integer DEFAULT 0 NOT NULL,
+    tag_count_copyright integer DEFAULT 0 NOT NULL,
+    file_size integer NOT NULL,
+    is_status_locked boolean DEFAULT false NOT NULL,
+    fav_string text DEFAULT ''::text NOT NULL,
+    pool_string text DEFAULT ''::text NOT NULL,
+    up_score integer DEFAULT 0 NOT NULL,
+    down_score integer DEFAULT 0 NOT NULL,
+    is_pending boolean DEFAULT false NOT NULL,
+    is_flagged boolean DEFAULT false NOT NULL,
+    is_deleted boolean DEFAULT false NOT NULL,
+    tag_count integer DEFAULT 0 NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    is_banned boolean DEFAULT false NOT NULL,
+    pixiv_id integer,
+    last_commented_at timestamp without time zone,
+    has_active_children boolean DEFAULT false,
+    bit_flags bigint DEFAULT 0 NOT NULL,
+    tag_count_meta integer DEFAULT 0 NOT NULL
+);
+ALTER TABLE ONLY public.posts ALTER COLUMN tag_index SET STATISTICS 2000;
+
+
+--
+-- Name: users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.users (
+    id integer NOT NULL,
+    name character varying NOT NULL,
+    level integer DEFAULT 20 NOT NULL,
+    email character varying,
+    inviter_id integer,
+    created_at timestamp without time zone NOT NULL,
+    last_logged_in_at timestamp without time zone DEFAULT now(),
+    last_forum_read_at timestamp without time zone DEFAULT '1960-01-01 00:00:00'::timestamp without time zone,
+    comment_threshold integer DEFAULT 0 NOT NULL,
+    updated_at timestamp without time zone,
+    default_image_size character varying DEFAULT 'large'::character varying NOT NULL,
+    favorite_tags text,
+    blacklisted_tags text DEFAULT 'spoilers
+guro
+scat
+furry -rating:s'::text,
+    time_zone character varying DEFAULT 'Eastern Time (US & Canada)'::character varying NOT NULL,
+    post_update_count integer DEFAULT 0 NOT NULL,
+    note_update_count integer DEFAULT 0 NOT NULL,
+    favorite_count integer DEFAULT 0 NOT NULL,
+    post_upload_count integer DEFAULT 0 NOT NULL,
+    bcrypt_password_hash text,
+    per_page integer DEFAULT 20 NOT NULL,
+    custom_style text,
+    bit_prefs bigint DEFAULT 0 NOT NULL,
+    last_ip_addr inet,
+    unread_dmail_count integer DEFAULT 0 NOT NULL,
+    theme integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: wiki_page_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.wiki_page_versions (
+    id integer NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    title character varying NOT NULL,
+    body text NOT NULL,
+    updater_id integer NOT NULL,
+    updater_ip_addr inet NOT NULL,
+    wiki_page_id integer NOT NULL,
+    is_locked boolean NOT NULL,
+    other_names text[] DEFAULT '{}'::text[] NOT NULL,
+    is_deleted boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: ip_addresses; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.ip_addresses AS
+ SELECT 'ArtistVersion'::text AS model_type,
+    artist_versions.id AS model_id,
+    artist_versions.updater_id AS user_id,
+    artist_versions.updater_ip_addr AS ip_addr,
+    artist_versions.created_at
+   FROM public.artist_versions
+UNION ALL
+ SELECT 'ArtistCommentaryVersion'::text AS model_type,
+    artist_commentary_versions.id AS model_id,
+    artist_commentary_versions.updater_id AS user_id,
+    artist_commentary_versions.updater_ip_addr AS ip_addr,
+    artist_commentary_versions.created_at
+   FROM public.artist_commentary_versions
+UNION ALL
+ SELECT 'Comment'::text AS model_type,
+    comments.id AS model_id,
+    comments.creator_id AS user_id,
+    comments.creator_ip_addr AS ip_addr,
+    comments.created_at
+   FROM public.comments
+UNION ALL
+ SELECT 'Dmail'::text AS model_type,
+    dmails.id AS model_id,
+    dmails.from_id AS user_id,
+    dmails.creator_ip_addr AS ip_addr,
+    dmails.created_at
+   FROM public.dmails
+UNION ALL
+ SELECT 'NoteVersion'::text AS model_type,
+    note_versions.id AS model_id,
+    note_versions.updater_id AS user_id,
+    note_versions.updater_ip_addr AS ip_addr,
+    note_versions.created_at
+   FROM public.note_versions
+UNION ALL
+ SELECT 'Post'::text AS model_type,
+    posts.id AS model_id,
+    posts.uploader_id AS user_id,
+    posts.uploader_ip_addr AS ip_addr,
+    posts.created_at
+   FROM public.posts
+UNION ALL
+ SELECT 'User'::text AS model_type,
+    users.id AS model_id,
+    users.id AS user_id,
+    users.last_ip_addr AS ip_addr,
+    users.created_at
+   FROM public.users
+  WHERE (users.last_ip_addr IS NOT NULL)
+UNION ALL
+ SELECT 'WikiPageVersion'::text AS model_type,
+    wiki_page_versions.id AS model_id,
+    wiki_page_versions.updater_id AS user_id,
+    wiki_page_versions.updater_ip_addr AS ip_addr,
+    wiki_page_versions.created_at
+   FROM public.wiki_page_versions;
+
+
+--
 -- Name: ip_bans; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2286,8 +2352,8 @@ CREATE TABLE public.ip_bans (
     creator_id integer NOT NULL,
     ip_addr inet NOT NULL,
     reason text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2311,40 +2377,6 @@ ALTER SEQUENCE public.ip_bans_id_seq OWNED BY public.ip_bans.id;
 
 
 --
--- Name: janitor_trials; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.janitor_trials (
-    id integer NOT NULL,
-    creator_id integer NOT NULL,
-    user_id integer NOT NULL,
-    original_level integer,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    status character varying DEFAULT 'active'::character varying NOT NULL
-);
-
-
---
--- Name: janitor_trials_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.janitor_trials_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: janitor_trials_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.janitor_trials_id_seq OWNED BY public.janitor_trials.id;
-
-
---
 -- Name: mod_actions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2352,8 +2384,8 @@ CREATE TABLE public.mod_actions (
     id integer NOT NULL,
     creator_id integer NOT NULL,
     description text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     category integer
 );
 
@@ -2386,8 +2418,8 @@ CREATE TABLE public.news_updates (
     message text NOT NULL,
     creator_id integer NOT NULL,
     updater_id integer NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2408,28 +2440,6 @@ CREATE SEQUENCE public.news_updates_id_seq
 --
 
 ALTER SEQUENCE public.news_updates_id_seq OWNED BY public.news_updates.id;
-
-
---
--- Name: note_versions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.note_versions (
-    id integer NOT NULL,
-    note_id integer NOT NULL,
-    post_id integer NOT NULL,
-    updater_id integer NOT NULL,
-    updater_ip_addr inet NOT NULL,
-    x integer NOT NULL,
-    y integer NOT NULL,
-    width integer NOT NULL,
-    height integer NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    body text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    version integer DEFAULT 0 NOT NULL
-);
 
 
 --
@@ -2466,8 +2476,8 @@ CREATE TABLE public.notes (
     is_active boolean DEFAULT true NOT NULL,
     body text NOT NULL,
     body_index tsvector NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     version integer DEFAULT 0 NOT NULL
 );
 
@@ -2534,8 +2544,8 @@ CREATE TABLE public.pools (
     is_active boolean DEFAULT true NOT NULL,
     post_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     category character varying DEFAULT 'series'::character varying NOT NULL
 );
 
@@ -2567,10 +2577,9 @@ CREATE TABLE public.post_appeals (
     id integer NOT NULL,
     post_id integer NOT NULL,
     creator_id integer NOT NULL,
-    creator_ip_addr inet,
     reason text,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2667,11 +2676,10 @@ CREATE TABLE public.post_flags (
     id integer NOT NULL,
     post_id integer NOT NULL,
     creator_id integer NOT NULL,
-    creator_ip_addr inet NOT NULL,
     reason text,
     is_resolved boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2739,15 +2747,6 @@ ALTER SEQUENCE public.post_replacements_id_seq OWNED BY public.post_replacements
 
 
 --
--- Name: post_updates; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE UNLOGGED TABLE public.post_updates (
-    post_id integer
-);
-
-
---
 -- Name: post_votes; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2756,8 +2755,8 @@ CREATE TABLE public.post_votes (
     post_id integer NOT NULL,
     user_id integer NOT NULL,
     score integer NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -2778,57 +2777,6 @@ CREATE SEQUENCE public.post_votes_id_seq
 --
 
 ALTER SEQUENCE public.post_votes_id_seq OWNED BY public.post_votes.id;
-
-
---
--- Name: posts; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.posts (
-    id integer NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    up_score integer DEFAULT 0 NOT NULL,
-    down_score integer DEFAULT 0 NOT NULL,
-    score integer DEFAULT 0 NOT NULL,
-    source character varying DEFAULT ''::character varying NOT NULL,
-    md5 character varying NOT NULL,
-    rating character(1) DEFAULT 'q'::bpchar NOT NULL,
-    is_note_locked boolean DEFAULT false NOT NULL,
-    is_rating_locked boolean DEFAULT false NOT NULL,
-    is_status_locked boolean DEFAULT false NOT NULL,
-    is_pending boolean DEFAULT false NOT NULL,
-    is_flagged boolean DEFAULT false NOT NULL,
-    is_deleted boolean DEFAULT false NOT NULL,
-    uploader_id integer NOT NULL,
-    uploader_ip_addr inet NOT NULL,
-    approver_id integer,
-    fav_string text DEFAULT ''::text NOT NULL,
-    pool_string text DEFAULT ''::text NOT NULL,
-    last_noted_at timestamp without time zone,
-    last_comment_bumped_at timestamp without time zone,
-    fav_count integer DEFAULT 0 NOT NULL,
-    tag_string text DEFAULT ''::text NOT NULL,
-    tag_index tsvector,
-    tag_count integer DEFAULT 0 NOT NULL,
-    tag_count_general integer DEFAULT 0 NOT NULL,
-    tag_count_artist integer DEFAULT 0 NOT NULL,
-    tag_count_character integer DEFAULT 0 NOT NULL,
-    tag_count_copyright integer DEFAULT 0 NOT NULL,
-    file_ext character varying NOT NULL,
-    file_size integer NOT NULL,
-    image_width integer NOT NULL,
-    image_height integer NOT NULL,
-    parent_id integer,
-    has_children boolean DEFAULT false NOT NULL,
-    is_banned boolean DEFAULT false NOT NULL,
-    pixiv_id integer,
-    last_commented_at timestamp without time zone,
-    has_active_children boolean DEFAULT false,
-    bit_flags bigint DEFAULT 0 NOT NULL,
-    tag_count_meta integer DEFAULT 0 NOT NULL,
-    keeper_data text
-);
 
 
 --
@@ -2858,8 +2806,8 @@ CREATE TABLE public.saved_searches (
     id integer NOT NULL,
     user_id integer,
     query text,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     labels text[] DEFAULT '{}'::text[] NOT NULL
 );
 
@@ -2932,12 +2880,10 @@ CREATE TABLE public.tag_aliases (
     antecedent_name character varying NOT NULL,
     consequent_name character varying NOT NULL,
     creator_id integer NOT NULL,
-    creator_ip_addr inet NOT NULL,
     forum_topic_id integer,
     status text DEFAULT 'pending'::text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    post_count integer DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     approver_id integer,
     forum_post_id integer
 );
@@ -2972,11 +2918,10 @@ CREATE TABLE public.tag_implications (
     consequent_name character varying NOT NULL,
     descendant_names text[] DEFAULT '{}'::text[] NOT NULL,
     creator_id integer NOT NULL,
-    creator_ip_addr inet NOT NULL,
     forum_topic_id integer,
     status text DEFAULT 'pending'::text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     approver_id integer,
     forum_post_id integer
 );
@@ -3002,43 +2947,6 @@ ALTER SEQUENCE public.tag_implications_id_seq OWNED BY public.tag_implications.i
 
 
 --
--- Name: tag_subscriptions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.tag_subscriptions (
-    id integer NOT NULL,
-    creator_id integer NOT NULL,
-    name character varying NOT NULL,
-    tag_query text NOT NULL,
-    post_ids text NOT NULL,
-    is_public boolean DEFAULT true NOT NULL,
-    last_accessed_at timestamp without time zone,
-    is_opted_in boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
-);
-
-
---
--- Name: tag_subscriptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.tag_subscriptions_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: tag_subscriptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.tag_subscriptions_id_seq OWNED BY public.tag_subscriptions.id;
-
-
---
 -- Name: tags; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3047,8 +2955,6 @@ CREATE TABLE public.tags (
     name character varying NOT NULL,
     post_count integer DEFAULT 0 NOT NULL,
     category integer DEFAULT 0 NOT NULL,
-    related_tags text,
-    related_tags_updated_at timestamp without time zone,
     created_at timestamp without time zone NOT NULL,
     updated_at timestamp without time zone NOT NULL,
     is_locked boolean DEFAULT false NOT NULL
@@ -3102,8 +3008,8 @@ CREATE TABLE public.uploads (
     backtrace text,
     post_id integer,
     md5_confirmation character varying,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     server text,
     parent_id integer,
     md5 character varying,
@@ -3148,9 +3054,9 @@ CREATE TABLE public.user_feedback (
     creator_id integer NOT NULL,
     category character varying NOT NULL,
     body text NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    creator_ip_addr inet
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    is_deleted boolean DEFAULT false NOT NULL
 );
 
 
@@ -3179,15 +3085,11 @@ ALTER SEQUENCE public.user_feedback_id_seq OWNED BY public.user_feedback.id;
 
 CREATE TABLE public.user_name_change_requests (
     id integer NOT NULL,
-    status character varying DEFAULT 'pending'::character varying NOT NULL,
     user_id integer NOT NULL,
-    approver_id integer,
     original_name character varying,
     desired_name character varying,
-    change_reason text,
-    rejection_reason text,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -3218,8 +3120,8 @@ CREATE TABLE public.user_password_reset_nonces (
     id integer NOT NULL,
     key character varying NOT NULL,
     email character varying NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
@@ -3243,45 +3145,6 @@ ALTER SEQUENCE public.user_password_reset_nonces_id_seq OWNED BY public.user_pas
 
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.users (
-    id integer NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    name character varying NOT NULL,
-    password_hash character varying NOT NULL,
-    email character varying,
-    email_verification_key character varying,
-    inviter_id integer,
-    level integer DEFAULT 0 NOT NULL,
-    base_upload_limit integer DEFAULT 10 NOT NULL,
-    last_logged_in_at timestamp without time zone,
-    last_forum_read_at timestamp without time zone,
-    recent_tags text,
-    post_upload_count integer DEFAULT 0 NOT NULL,
-    post_update_count integer DEFAULT 0 NOT NULL,
-    note_update_count integer DEFAULT 0 NOT NULL,
-    favorite_count integer DEFAULT 0 NOT NULL,
-    comment_threshold integer DEFAULT '-1'::integer NOT NULL,
-    default_image_size character varying DEFAULT 'large'::character varying NOT NULL,
-    favorite_tags text,
-    blacklisted_tags text DEFAULT 'spoilers
-guro
-scat
-furry -rating:s'::text,
-    time_zone character varying DEFAULT 'Eastern Time (US & Canada)'::character varying NOT NULL,
-    bcrypt_password_hash text,
-    per_page integer DEFAULT 20 NOT NULL,
-    custom_style text,
-    bit_prefs bigint DEFAULT 0 NOT NULL,
-    last_ip_addr inet,
-    unread_dmail_count integer DEFAULT 0 NOT NULL
-);
-
-
---
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -3298,25 +3161,6 @@ CREATE SEQUENCE public.users_id_seq
 --
 
 ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
-
-
---
--- Name: wiki_page_versions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.wiki_page_versions (
-    id integer NOT NULL,
-    wiki_page_id integer NOT NULL,
-    updater_id integer NOT NULL,
-    updater_ip_addr inet NOT NULL,
-    title character varying NOT NULL,
-    body text NOT NULL,
-    is_locked boolean NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    other_names text[] DEFAULT '{}'::text[] NOT NULL,
-    is_deleted boolean DEFAULT false NOT NULL
-);
 
 
 --
@@ -3344,14 +3188,12 @@ ALTER SEQUENCE public.wiki_page_versions_id_seq OWNED BY public.wiki_page_versio
 
 CREATE TABLE public.wiki_pages (
     id integer NOT NULL,
-    creator_id integer NOT NULL,
     title character varying NOT NULL,
     body text NOT NULL,
     body_index tsvector NOT NULL,
     is_locked boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    updater_id integer,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
     other_names text[] DEFAULT '{}'::text[] NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL
 );
@@ -3374,34 +3216,6 @@ CREATE SEQUENCE public.wiki_pages_id_seq
 --
 
 ALTER SEQUENCE public.wiki_pages_id_seq OWNED BY public.wiki_pages.id;
-
-
---
--- Name: advertisement_hits id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.advertisement_hits ALTER COLUMN id SET DEFAULT nextval('public.advertisement_hits_id_seq'::regclass);
-
-
---
--- Name: advertisements id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.advertisements ALTER COLUMN id SET DEFAULT nextval('public.advertisements_id_seq'::regclass);
-
-
---
--- Name: amazon_backups id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.amazon_backups ALTER COLUMN id SET DEFAULT nextval('public.amazon_backups_id_seq'::regclass);
-
-
---
--- Name: anti_voters id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.anti_voters ALTER COLUMN id SET DEFAULT nextval('public.anti_voters_id_seq'::regclass);
 
 
 --
@@ -3493,6 +3307,13 @@ ALTER TABLE ONLY public.dmail_filters ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.dmails ALTER COLUMN id SET DEFAULT nextval('public.dmails_id_seq'::regclass);
+
+
+--
+-- Name: dtext_links id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dtext_links ALTER COLUMN id SET DEFAULT nextval('public.dtext_links_id_seq'::regclass);
 
 
 --
@@ -4252,13 +4073,6 @@ ALTER TABLE ONLY public.ip_bans ALTER COLUMN id SET DEFAULT nextval('public.ip_b
 
 
 --
--- Name: janitor_trials id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.janitor_trials ALTER COLUMN id SET DEFAULT nextval('public.janitor_trials_id_seq'::regclass);
-
-
---
 -- Name: mod_actions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4378,13 +4192,6 @@ ALTER TABLE ONLY public.tag_implications ALTER COLUMN id SET DEFAULT nextval('pu
 
 
 --
--- Name: tag_subscriptions id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tag_subscriptions ALTER COLUMN id SET DEFAULT nextval('public.tag_subscriptions_id_seq'::regclass);
-
-
---
 -- Name: tags id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4438,38 +4245,6 @@ ALTER TABLE ONLY public.wiki_page_versions ALTER COLUMN id SET DEFAULT nextval('
 --
 
 ALTER TABLE ONLY public.wiki_pages ALTER COLUMN id SET DEFAULT nextval('public.wiki_pages_id_seq'::regclass);
-
-
---
--- Name: advertisement_hits advertisement_hits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.advertisement_hits
-    ADD CONSTRAINT advertisement_hits_pkey PRIMARY KEY (id);
-
-
---
--- Name: advertisements advertisements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.advertisements
-    ADD CONSTRAINT advertisements_pkey PRIMARY KEY (id);
-
-
---
--- Name: amazon_backups amazon_backups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.amazon_backups
-    ADD CONSTRAINT amazon_backups_pkey PRIMARY KEY (id);
-
-
---
--- Name: anti_voters anti_voters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.anti_voters
-    ADD CONSTRAINT anti_voters_pkey PRIMARY KEY (id);
 
 
 --
@@ -4585,6 +4360,14 @@ ALTER TABLE ONLY public.dmails
 
 
 --
+-- Name: dtext_links dtext_links_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dtext_links
+    ADD CONSTRAINT dtext_links_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: favorite_groups favorite_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4646,14 +4429,6 @@ ALTER TABLE ONLY public.forum_topics
 
 ALTER TABLE ONLY public.ip_bans
     ADD CONSTRAINT ip_bans_pkey PRIMARY KEY (id);
-
-
---
--- Name: janitor_trials janitor_trials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.janitor_trials
-    ADD CONSTRAINT janitor_trials_pkey PRIMARY KEY (id);
 
 
 --
@@ -4769,14 +4544,6 @@ ALTER TABLE ONLY public.saved_searches
 
 
 --
--- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.schema_migrations
-    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
-
-
---
 -- Name: super_voters super_voters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4798,14 +4565,6 @@ ALTER TABLE ONLY public.tag_aliases
 
 ALTER TABLE ONLY public.tag_implications
     ADD CONSTRAINT tag_implications_pkey PRIMARY KEY (id);
-
-
---
--- Name: tag_subscriptions tag_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tag_subscriptions
-    ADD CONSTRAINT tag_subscriptions_pkey PRIMARY KEY (id);
 
 
 --
@@ -4873,27 +4632,6 @@ ALTER TABLE ONLY public.wiki_pages
 
 
 --
--- Name: index_advertisement_hits_on_advertisement_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_advertisement_hits_on_advertisement_id ON public.advertisement_hits USING btree (advertisement_id);
-
-
---
--- Name: index_advertisement_hits_on_created_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_advertisement_hits_on_created_at ON public.advertisement_hits USING btree (created_at);
-
-
---
--- Name: index_advertisements_on_ad_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_advertisements_on_ad_type ON public.advertisements USING btree (ad_type);
-
-
---
 -- Name: index_api_keys_on_key; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4912,6 +4650,13 @@ CREATE UNIQUE INDEX index_api_keys_on_user_id ON public.api_keys USING btree (us
 --
 
 CREATE UNIQUE INDEX index_artist_commentaries_on_post_id ON public.artist_commentaries USING btree (post_id);
+
+
+--
+-- Name: index_artist_commentary_versions_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_artist_commentary_versions_on_created_at ON public.artist_commentary_versions USING btree (created_at);
 
 
 --
@@ -5083,6 +4828,12 @@ CREATE INDEX index_comment_votes_on_user_id ON public.comment_votes USING btree 
 
 
 --
+-- Name: index_comments_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_comments_on_created_at ON public.comments USING btree (created_at);
+
+--
 -- Name: index_comments_on_body_index; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5111,6 +4862,20 @@ CREATE INDEX index_comments_on_post_id ON public.comments USING btree (post_id);
 
 
 --
+-- Name: index_delayed_jobs_on_locked_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_delayed_jobs_on_locked_at ON public.delayed_jobs USING btree (locked_at);
+
+
+--
+-- Name: index_delayed_jobs_on_locked_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_delayed_jobs_on_locked_by ON public.delayed_jobs USING btree (locked_by);
+
+
+--
 -- Name: index_delayed_jobs_on_run_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5125,10 +4890,24 @@ CREATE UNIQUE INDEX index_dmail_filters_on_user_id ON public.dmail_filters USING
 
 
 --
+-- Name: index_dmails_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_dmails_on_created_at ON public.dmails USING btree (created_at);
+
+
+--
 -- Name: index_dmails_on_creator_ip_addr; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_dmails_on_creator_ip_addr ON public.dmails USING btree (creator_ip_addr);
+
+
+--
+-- Name: index_dmails_on_from_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_dmails_on_from_id ON public.dmails USING btree (from_id);
 
 
 --
@@ -5157,6 +4936,27 @@ CREATE INDEX index_dmails_on_message_index ON public.dmails USING gin (message_i
 --
 
 CREATE INDEX index_dmails_on_owner_id ON public.dmails USING btree (owner_id);
+
+
+--
+-- Name: index_dtext_links_on_link_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_dtext_links_on_link_target ON public.dtext_links USING btree (link_target text_pattern_ops);
+
+
+--
+-- Name: index_dtext_links_on_link_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_dtext_links_on_link_type ON public.dtext_links USING btree (link_type);
+
+
+--
+-- Name: index_dtext_links_on_model_type_and_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_dtext_links_on_model_type_and_model_id ON public.dtext_links USING btree (model_type, model_id);
 
 
 --
@@ -6609,6 +6409,13 @@ CREATE INDEX index_forum_posts_on_topic_id ON public.forum_posts USING btree (to
 
 
 --
+-- Name: index_forum_posts_on_updated_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_forum_posts_on_updated_at ON public.forum_posts USING btree (updated_at);
+
+
+--
 -- Name: index_forum_subscriptions_on_forum_topic_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6675,14 +6482,21 @@ CREATE INDEX index_forum_topics_on_updated_at ON public.forum_topics USING btree
 -- Name: index_ip_bans_on_ip_addr; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_ip_bans_on_ip_addr ON public.ip_bans USING btree (ip_addr);
+CREATE INDEX index_ip_bans_on_ip_addr ON public.ip_bans USING btree (ip_addr);
 
 
 --
--- Name: index_janitor_trials_on_user_id; Type: INDEX; Schema: public; Owner: -
+-- Name: index_mod_actions_on_created_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_janitor_trials_on_user_id ON public.janitor_trials USING btree (user_id);
+CREATE INDEX index_mod_actions_on_created_at ON public.mod_actions USING btree (created_at);
+
+
+--
+-- Name: index_mod_actions_on_creator_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_mod_actions_on_creator_id ON public.mod_actions USING btree (creator_id);
 
 
 --
@@ -6756,10 +6570,24 @@ CREATE UNIQUE INDEX index_pixiv_ugoira_frame_data_on_post_id ON public.pixiv_ugo
 
 
 --
+-- Name: index_pools_on_category; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pools_on_category ON public.pools USING btree (category);
+
+
+--
 -- Name: index_pools_on_creator_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_pools_on_creator_id ON public.pools USING btree (creator_id);
+
+
+--
+-- Name: index_pools_on_is_deleted; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pools_on_is_deleted ON public.pools USING btree (is_deleted);
 
 
 --
@@ -6770,17 +6598,17 @@ CREATE INDEX index_pools_on_lower_name ON public.pools USING btree (lower((name)
 
 
 --
--- Name: index_pools_on_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_pools_on_name ON public.pools USING btree (name);
-
-
---
 -- Name: index_pools_on_name_trgm; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_pools_on_name_trgm ON public.pools USING gin (lower((name)::text) public.gin_trgm_ops);
+CREATE INDEX index_pools_on_name_trgm ON public.pools USING gin (name public.gin_trgm_ops);
+
+
+--
+-- Name: index_pools_on_post_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pools_on_post_ids ON public.pools USING gin (post_ids);
 
 
 --
@@ -6802,13 +6630,6 @@ CREATE INDEX index_post_appeals_on_created_at ON public.post_appeals USING btree
 --
 
 CREATE INDEX index_post_appeals_on_creator_id ON public.post_appeals USING btree (creator_id);
-
-
---
--- Name: index_post_appeals_on_creator_ip_addr; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_post_appeals_on_creator_ip_addr ON public.post_appeals USING btree (creator_ip_addr);
 
 
 --
@@ -6861,13 +6682,6 @@ CREATE INDEX index_post_flags_on_creator_id ON public.post_flags USING btree (cr
 
 
 --
--- Name: index_post_flags_on_creator_ip_addr; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_post_flags_on_creator_ip_addr ON public.post_flags USING btree (creator_ip_addr);
-
-
---
 -- Name: index_post_flags_on_post_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6896,6 +6710,13 @@ CREATE INDEX index_post_replacements_on_post_id ON public.post_replacements USIN
 
 
 --
+-- Name: index_post_votes_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_post_votes_on_created_at ON public.post_votes USING btree (created_at);
+
+
+--
 -- Name: index_post_votes_on_post_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6907,6 +6728,13 @@ CREATE INDEX index_post_votes_on_post_id ON public.post_votes USING btree (post_
 --
 
 CREATE INDEX index_post_votes_on_user_id ON public.post_votes USING btree (user_id);
+
+
+--
+-- Name: index_posts_on_approver_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_posts_on_approver_id ON public.posts USING btree (approver_id) WHERE (approver_id IS NOT NULL);
 
 
 --
@@ -6983,7 +6811,7 @@ CREATE INDEX index_posts_on_mpixels ON public.posts USING btree (((((image_width
 -- Name: index_posts_on_parent_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_posts_on_parent_id ON public.posts USING btree (parent_id);
+CREATE INDEX index_posts_on_parent_id ON public.posts USING btree (parent_id) WHERE (parent_id IS NOT NULL);
 
 
 --
@@ -6994,17 +6822,10 @@ CREATE INDEX index_posts_on_pixiv_id ON public.posts USING btree (pixiv_id) WHER
 
 
 --
--- Name: index_posts_on_source; Type: INDEX; Schema: public; Owner: -
+-- Name: index_posts_on_source_trgm; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_posts_on_source ON public.posts USING btree (lower((source)::text));
-
-
---
--- Name: index_posts_on_source_pattern; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_posts_on_source_pattern ON public.posts USING btree (public.sourcepattern(lower((source)::text)) text_pattern_ops);
+CREATE INDEX index_posts_on_source_trgm ON public.posts USING gin (source public.gin_trgm_ops);
 
 
 --
@@ -7018,7 +6839,7 @@ CREATE INDEX index_posts_on_tags_index ON public.posts USING gin (tag_index);
 -- Name: index_posts_on_uploader_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_posts_on_uploader_id ON public.posts USING btree (uploader_id);
+CREATE INDEX index_posts_on_uploader_id ON public.posts USING btree (uploader_id) WHERE (uploader_id IS NOT NULL);
 
 
 --
@@ -7078,13 +6899,6 @@ CREATE INDEX index_tag_aliases_on_forum_post_id ON public.tag_aliases USING btre
 
 
 --
--- Name: index_tag_aliases_on_post_count; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_tag_aliases_on_post_count ON public.tag_aliases USING btree (post_count);
-
-
---
 -- Name: index_tag_implications_on_antecedent_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7103,20 +6917,6 @@ CREATE INDEX index_tag_implications_on_consequent_name ON public.tag_implication
 --
 
 CREATE INDEX index_tag_implications_on_forum_post_id ON public.tag_implications USING btree (forum_post_id);
-
-
---
--- Name: index_tag_subscriptions_on_creator_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_tag_subscriptions_on_creator_id ON public.tag_subscriptions USING btree (creator_id);
-
-
---
--- Name: index_tag_subscriptions_on_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_tag_subscriptions_on_name ON public.tag_subscriptions USING btree (name);
 
 
 --
@@ -7145,6 +6945,13 @@ CREATE INDEX index_tags_on_name_prefix ON public.tags USING gin (regexp_replace(
 --
 
 CREATE INDEX index_tags_on_name_trgm ON public.tags USING gin (name public.gin_trgm_ops);
+
+
+--
+-- Name: index_tags_on_post_count; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_tags_on_post_count ON public.tags USING btree (post_count);
 
 
 --
@@ -7197,13 +7004,6 @@ CREATE INDEX index_user_feedback_on_creator_id ON public.user_feedback USING btr
 
 
 --
--- Name: index_user_feedback_on_creator_ip_addr; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_user_feedback_on_creator_ip_addr ON public.user_feedback USING btree (creator_ip_addr);
-
-
---
 -- Name: index_user_feedback_on_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7225,10 +7025,24 @@ CREATE INDEX index_user_name_change_requests_on_user_id ON public.user_name_chan
 
 
 --
+-- Name: index_users_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_users_on_created_at ON public.users USING btree (created_at);
+
+
+--
 -- Name: index_users_on_email; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
+CREATE INDEX index_users_on_email ON public.users USING btree (email) WHERE (email IS NOT NULL);
+
+
+--
+-- Name: index_users_on_inviter_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_users_on_inviter_id ON public.users USING btree (inviter_id) WHERE (inviter_id IS NOT NULL);
 
 
 --
@@ -7249,7 +7063,7 @@ CREATE UNIQUE INDEX index_users_on_name ON public.users USING btree (lower((name
 -- Name: index_users_on_name_trgm; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_users_on_name_trgm ON public.users USING gin (lower((name)::text) public.gin_trgm_ops);
+CREATE INDEX index_users_on_name_trgm ON public.users USING gin (name public.gin_trgm_ops);
 
 
 --
@@ -7257,6 +7071,13 @@ CREATE INDEX index_users_on_name_trgm ON public.users USING gin (lower((name)::t
 --
 
 CREATE INDEX index_wiki_page_versions_on_created_at ON public.wiki_page_versions USING btree (created_at);
+
+
+--
+-- Name: index_wiki_page_versions_on_updater_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_wiki_page_versions_on_updater_id ON public.wiki_page_versions USING btree (updater_id);
 
 
 --
@@ -7306,6 +7127,13 @@ CREATE INDEX index_wiki_pages_on_title_pattern ON public.wiki_pages USING btree 
 --
 
 CREATE INDEX index_wiki_pages_on_updated_at ON public.wiki_pages USING btree (updated_at);
+
+
+--
+-- Name: unique_schema_migrations; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX unique_schema_migrations ON public.schema_migrations USING btree (version);
 
 
 --
@@ -7542,6 +7370,33 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20181130004740'),
 ('20181202172145'),
 ('20190109210822'),
-('20190129012253');
+('20190129012253'),
+('20190712174818'),
+('20190827013252'),
+('20190827014726'),
+('20190827233235'),
+('20190827234625'),
+('20190828005453'),
+('20190829052629'),
+('20190829055758'),
+('20190902224045'),
+('20190908031103'),
+('20190908035317'),
+('20190919175836'),
+('20190923071044'),
+('20190926000912'),
+('20191023191749'),
+('20191024194544'),
+('20191111004329'),
+('20191111024520'),
+('20191116001441'),
+('20191116021759'),
+('20191116224228'),
+('20191117074642'),
+('20191117080647'),
+('20191117081229'),
+('20191117200404'),
+('20191119061018'),
+('20191223032633');
 
 

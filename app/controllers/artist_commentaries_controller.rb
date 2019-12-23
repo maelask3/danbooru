@@ -1,14 +1,13 @@
 class ArtistCommentariesController < ApplicationController
   respond_to :html, :xml, :json, :js
-  before_action :member_only, :except => [:index, :show]
+  before_action :member_only, only: [:create_or_update, :revert]
 
   def index
-    @commentaries = ArtistCommentary.search(search_params).paginate(params[:page], :limit => params[:limit])
-    respond_with(@commentaries) do |format|
-      format.xml do
-        render :xml => @commentaries.to_xml(:root => "artist-commentaries")
-      end
-    end
+    @commentaries = ArtistCommentary.paginated_search(params)
+    respond_with(@commentaries)
+  end
+
+  def search
   end
 
   def show
@@ -35,7 +34,7 @@ class ArtistCommentariesController < ApplicationController
     @artist_commentary.revert_to!(@version)
   end
 
-private
+  private
 
   def commentary_params
     params.fetch(:artist_commentary, {}).except(:post_id).permit(%i[

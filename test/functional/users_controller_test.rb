@@ -19,7 +19,7 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
 
       should "raise error for /users?name=<nonexistent>" do
         get users_path, params: { name: "nobody" }
-        assert_response :error
+        assert_response 404
       end
 
       should "list all users (with search)" do
@@ -75,11 +75,37 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
       end
     end
 
+    context "profile action" do
+      should "render the current user's profile" do
+        get_auth profile_path, @user
+
+        assert_response :success
+        assert_select "#page h1", @user.name
+      end
+
+      should "render the current users's profile in json" do
+        get_auth profile_path, @user, as: :json
+        assert_response :success
+
+        assert_equal(@user.comment_count, response.parsed_body["comment_count"])
+      end
+
+      should "redirect anonymous users to the sign in page" do
+        get profile_path
+        assert_redirected_to new_session_path
+      end
+
+      should "return 404 for anonymous api calls" do
+        get profile_path(format: :json)
+        assert_response 404
+      end
+    end
+
     context "new action" do
       setup do
         Danbooru.config.stubs(:enable_recaptcha?).returns(false)
       end
-      
+
       should "render" do
         get new_user_path
         assert_response :success
@@ -95,7 +121,7 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
 
       context "with sockpuppet validation enabled" do
         setup do
-          Danbooru.config.unstub(:enable_sock_puppet_validation?)          
+          Danbooru.config.unstub(:enable_sock_puppet_validation?)
           @user.update(last_ip_addr: "127.0.0.1")
         end
 
@@ -108,21 +134,27 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
     end
 
     context "edit action" do
-      setup do
-        @user = create(:user)
-      end
-
       should "render" do
         get_auth edit_user_path(@user), @user
         assert_response :success
       end
     end
 
-    context "update action" do
-      setup do
-        @user = create(:user)
+    context "settings action" do
+      should "render" do
+        get_auth settings_path, @user
+
+        assert_response :success
+        assert_select "#page h1", "Settings"
       end
 
+      should "redirect anonymous users to the sign in page" do
+        get settings_path
+        assert_redirected_to new_session_path
+      end
+    end
+
+    context "update action" do
       should "update a user" do
         put_auth user_path(@user), @user, params: {:user => {:favorite_tags => "xyz"}}
         @user.reload

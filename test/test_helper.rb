@@ -8,15 +8,14 @@ if ENV["SIMPLECOV"]
   end
 end
 
-require File.expand_path('../../config/environment', __FILE__)
+require File.expand_path('../config/environment', __dir__)
 require 'rails/test_help'
 require 'cache'
 require 'webmock/minitest'
+require 'mocha/minitest'
 
-Dir[File.expand_path(File.dirname(__FILE__) + "/factories/*.rb")].each {|file| require file}
-Dir[File.expand_path(File.dirname(__FILE__) + "/test_helpers/*.rb")].each {|file| require file}
-
-Dotenv.load(Rails.root + ".env.local")
+Dir[File.expand_path(File.dirname(__FILE__) + "/factories/*.rb")].sort.each {|file| require file}
+Dir[File.expand_path(File.dirname(__FILE__) + "/test_helpers/*.rb")].sort.each {|file| require file}
 
 Shoulda::Matchers.configure do |config|
   config.integrate do |with|
@@ -26,13 +25,6 @@ Shoulda::Matchers.configure do |config|
 end
 
 module TestHelpers
-  def create(factory_bot_model, params = {})
-    record = FactoryBot.build(factory_bot_model, params)
-    record.save
-    raise ActiveRecord::RecordInvalid.new(record) if record.errors.any?
-    record
-  end
-
   def as(user, &block)
     CurrentUser.as(user, &block)
   end
@@ -62,14 +54,14 @@ module TestHelpers
   end
 end
 
-
 class ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+  include FactoryBot::Syntax::Methods
   include PostArchiveTestHelper
   include PoolArchiveTestHelper
   include ReportbooruHelper
   include DownloadTestHelper
   include IqdbTestHelper
-  include SavedSearchTestHelper
   include UploadTestHelper
   include TestHelpers
 
@@ -97,10 +89,8 @@ class ActionDispatch::IntegrationTest
   include TestHelpers
 
   def method_authenticated(method_name, url, user, options)
-    Thread.current[:test_user_id] = user.id
+    post session_path, params: { name: user.name, password: user.password }
     self.send(method_name, url, options)
-  ensure
-    Thread.current[:test_user_id] = nil
   end
 
   def get_auth(url, user, options = {})
@@ -123,6 +113,8 @@ class ActionDispatch::IntegrationTest
     super
     Socket.stubs(:gethostname).returns("www.example.com")
     Danbooru.config.stubs(:enable_sock_puppet_validation?).returns(false)
+
+    ActionDispatch::IntegrationTest.register_encoder :xml, response_parser: ->(body) { Nokogiri.XML(body) }
   end
 
   def teardown
@@ -130,7 +122,5 @@ class ActionDispatch::IntegrationTest
     Cache.clear
   end
 end
-
-Delayed::Worker.delay_jobs = false
 
 Rails.application.load_seed

@@ -1,5 +1,5 @@
 <div id="c-user-upgrades">
-  <div id="a-new">
+  <div id="a-new" class="fixed-width-container">
     <h1>Upgrade Account</h1>
 
     <% unless params[:user_id] %>
@@ -23,8 +23,8 @@
             <tr>
               <td>Cost</td>
               <td>Free</td>
-              <td>$20<p class="cost-footnote">One time fee</p></td>
-              <td>$40<p class="cost-footnote">One time fee</p></td>
+              <td>$20<div class="fineprint">One time fee</div></td>
+              <td>$40<div class="fineprint">One time fee</div></td>
             </tr>
             <tr>
               <td>Tag Limit</td>
@@ -75,19 +75,13 @@
               <td>4</td>
             </tr>
             <tr>
-              <td>Database Timeout</td>
+              <td>Search Timeout</td>
               <td>3 sec</td>
               <td>6 sec</td>
               <td>9 sec</td>
             </tr>
             <tr>
               <td>Variable Posts Per Page</td>
-              <td>No</td>
-              <td>Yes</td>
-              <td>Yes</td>
-            </tr>
-            <tr>
-              <td>Name Changes</td>
               <td>No</td>
               <td>Yes</td>
               <td>Yes</td>
@@ -106,7 +100,9 @@
     </div>
 
     <% if Danbooru.config.stripe_publishable_key %>
-      <% if CurrentUser.safe_mode? %>
+      <% if CurrentUser.is_anonymous? %>
+        <p><%= link_to "Sign up", new_user_path %> or <%= link_to "login", login_path(url: new_user_upgrade_path) %> first to upgrade your account.</p>
+      <% elsif CurrentUser.safe_mode? %>
         <%= render "stripe_payment" %>
       <% else %>
         <%= render "stripe_payment_safebooru" %>

@@ -40,10 +40,12 @@ class UserTest < ActiveSupport::TestCase
     end
 
     should "not validate if the originating ip address is banned" do
-      FactoryBot.create(:ip_ban, ip_addr: '127.0.0.1')
-      user = FactoryBot.build(:user)
-      user.save
-      assert_equal("IP address is banned", user.errors.full_messages.join)
+      CurrentUser.scoped(User.anonymous, "1.2.3.4") do
+        create(:ip_ban, ip_addr: '1.2.3.4')
+        user = build(:user, last_ip_addr: '1.2.3.4')
+        refute(user.valid?)
+        assert_equal("IP address is banned", user.errors.full_messages.join)
+      end
     end
 
     should "limit post uploads" do
@@ -86,21 +88,10 @@ class UserTest < ActiveSupport::TestCase
       @user.update_column(:created_at, 1.year.ago)
       assert(@user.can_comment?)
       assert(!@user.is_comment_limited?)
-      (Danbooru.config.member_comment_limit).times do
+      Danbooru.config.member_comment_limit.times do
         FactoryBot.create(:comment)
       end
       assert(@user.is_comment_limited?)
-    end
-
-    should "verify" do
-      assert(@user.is_verified?)
-      @user = FactoryBot.create(:user)
-      @user.generate_email_verification_key
-      @user.save
-      assert(!@user.is_verified?)
-      assert_raise(User::Error) {@user.verify!("bbb")}
-      assert_nothing_raised {@user.verify!(@user.email_verification_key)}
-      assert(@user.is_verified?)
     end
 
     should "authenticate" do
@@ -132,10 +123,6 @@ class UserTest < ActiveSupport::TestCase
     end
 
     context "name" do
-      should "be #{Danbooru.config.default_guest_name} given an invalid user id" do
-        assert_equal(Danbooru.config.default_guest_name, User.id_to_name(-1))
-      end
-
       should "not contain whitespace" do
         # U+2007: https://en.wikipedia.org/wiki/Figure_space
         user = FactoryBot.build(:user, :name => "foo\u2007bar")
@@ -161,15 +148,42 @@ class UserTest < ActiveSupport::TestCase
         assert_equal(["Name cannot begin or end with an underscore"], user.errors.full_messages)
       end
 
-      should "be fetched given a user id" do
-        @user = FactoryBot.create(:user)
-        assert_equal(@user.name, User.id_to_name(@user.id))
-      end
-
       should "be updated" do
         @user = FactoryBot.create(:user)
         @user.update_attribute(:name, "danzig")
-        assert_equal(@user.name, User.id_to_name(@user.id))
+      end
+    end
+
+    context "searching for users by name" do
+      setup do
+        @miku = create(:user, name: "hatsune_miku")
+      end
+
+      should "be case-insensitive" do
+        assert_equal("hatsune_miku", User.normalize_name("Hatsune_Miku"))
+        assert_equal(@miku.id, User.find_by_name("Hatsune_Miku").id)
+        assert_equal(@miku.id, User.name_to_id("Hatsune_Miku"))
+      end
+
+      should "handle whitespace" do
+        assert_equal("hatsune_miku", User.normalize_name(" hatsune miku "))
+        assert_equal(@miku.id, User.find_by_name(" hatsune miku ").id)
+        assert_equal(@miku.id, User.name_to_id(" hatsune miku "))
+      end
+
+      should "return nil for nonexistent names" do
+        assert_nil(User.find_by_name("does_not_exist"))
+        assert_nil(User.name_to_id("does_not_exist"))
+      end
+
+      should "work for names containing asterisks or backlashes" do
+        @user1 = create(:user, name: "user*1")
+        @user2 = create(:user, name: "user*2")
+        @user3 = create(:user, name: "user\*3")
+
+        assert_equal(@user1.id, User.find_by_name("user*1").id)
+        assert_equal(@user2.id, User.find_by_name("user*2").id)
+        assert_equal(@user3.id, User.find_by_name("user\*3").id)
       end
     end
 
@@ -235,25 +249,25 @@ class UserTest < ActiveSupport::TestCase
 
       should "not change the password if the password and old password are blank" do
         @user = FactoryBot.create(:user, :password => "67890")
-        @user.update_attributes(:password => "", :old_password => "")
+        @user.update(password: "", old_password: "")
         assert(@user.bcrypt_password == User.sha1("67890"))
       end
 
       should "not change the password if the old password is incorrect" do
         @user = FactoryBot.create(:user, :password => "67890")
-        @user.update_attributes(:password => "12345", :old_password => "abcdefg")
+        @user.update(password: "12345", old_password: "abcdefg")
         assert(@user.bcrypt_password == User.sha1("67890"))
       end
 
       should "not change the password if the old password is blank" do
         @user = FactoryBot.create(:user, :password => "67890")
-        @user.update_attributes(:password => "12345", :old_password => "")
+        @user.update(password: "12345", old_password: "")
         assert(@user.bcrypt_password == User.sha1("67890"))
       end
 
       should "change the password if the old password is correct" do
         @user = FactoryBot.create(:user, :password => "67890")
-        @user.update_attributes(:password => "12345", :old_password => "67890")
+        @user.update(password: "12345", old_password: "67890")
         assert(@user.bcrypt_password == User.sha1("12345"))
       end
 

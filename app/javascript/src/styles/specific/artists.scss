@@ -1,35 +1,16 @@
-@import "../base/000_vars.scss";
-
 div#c-artists, div#excerpt {
   span.new-artist {
     font-weight: bold;
-    color: #A00;
+    color: var(--new-artist-color);
   }
 
-  ul ul {
-    margin-left: 1em;
+  .recent-posts h2 {
+    margin: 1em 0 0.5em;
   }
 
-  div#a-edit, div#a-new {
-    textarea {
-      height: 10em;
-      
-      &#artist_other_names_string {
-        height: 3em;
-      }
-    }
-
-    .hint {
-      display: block;
-    } 
-  }
-
-  div.recent-posts {
-    margin-top: 1em;
-
-    h1 {
-      font-size: $h2_size;
-      margin: 0;
+  div#a-index {
+    td {
+      height: 2.25em; /* should match .artist-other-name line-height */
     }
   }
 }
