@@ -46,6 +46,7 @@ gem 'scenic'
 gem 'ipaddress'
 gem 'http'
 gem 'ed25519'
+gem 'bcrypt_pbkdf'
 
 # needed for looser jpeg header compat
 gem 'ruby-imagespec', :require => "image_spec", :git => "https://github.com/r888888888/ruby-imagespec.git", :branch => "exif-fixes"
